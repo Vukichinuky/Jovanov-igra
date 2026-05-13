@@ -234,14 +234,36 @@ select:focus, input:focus { outline: 1px solid var(--accent-2); }
 #map-header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
+  gap: 0.5rem;
   padding-bottom: 0.4rem;
   border-bottom: 1px dashed var(--line);
   margin-bottom: 0.5rem;
+  flex-wrap: wrap;
 }
 #map-label  { color: var(--ink-dim); letter-spacing: 0.18em; text-transform: uppercase; font-size: 0.75rem; }
-#map-coord  { color: var(--ink-faint); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+#map-coord  { color: var(--ink-faint); font-size: 0.8rem; font-variant-numeric: tabular-nums; flex: 1; }
 .dim        { color: var(--ink-faint); }
+
+#map-zoom-controls { display: flex; gap: 0.3rem; }
+.zoom-btn {
+  font: inherit;
+  background: var(--bg-3);
+  color: var(--ink);
+  border: 1px solid var(--line-2);
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+  min-width: 2rem;
+}
+.zoom-btn:hover { background: #232a2f; border-color: var(--accent-2); }
+
+#map-wrap {
+  max-height: 60vh;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  background: #07090a;
+}
 
 #map-wrap {
   width: 100%;
@@ -258,13 +280,26 @@ select:focus, input:focus { outline: 1px solid var(--accent-2); }
 /* hex tile fills */
 .tile          { fill: #0e1316; stroke: #1a2125; stroke-width: 0.5; transition: fill 0.15s; }
 .tile.fog      { fill: #0a0d10; stroke: #14181b; }
-.tile.dark     { fill: #000; stroke: #0a0d10; }   /* fog-closed-in wall */
-.tile.revealed { fill: #1c2226; stroke: #2a3036; }
+.tile.dark     { fill: #000; stroke: #0a0d10; }
+
+/* Revealed by biome */
+.tile.revealed                { fill: #1c2226; stroke: #2a3036; }
+.tile.revealed.b-mountain     { fill: #2a2824; stroke: #3a382e; }
+.tile.revealed.b-river        { fill: #1a2a36; stroke: #284454; }
+
+/* Peeked tiles get the biome color too, dimmer */
+.tile.peeked.b-mountain       { fill: #1d1b18; }
+.tile.peeked.b-river          { fill: #122028; }
+
 .tile.landmark { fill: #2a2620; stroke: #3a342a; }
-.tile.you      { fill: #2a3640; stroke: var(--accent); stroke-width: 1.4; }
-.tile.reach    { fill: #233233; stroke: var(--accent-2); stroke-width: 1.2; cursor: pointer; }
+.tile.landmark.b-mountain { fill: #322c22; stroke: #4a3c2a; }
+.tile.landmark.b-river    { fill: #1c2c34; stroke: #2e4a58; }
+
+.tile.you      { fill: #2a3640; stroke: var(--accent); stroke-width: 1.6; }
+.tile.reach    { fill: #233233; stroke: var(--accent-2); stroke-width: 1.4; cursor: pointer; }
 .tile.reach:hover { fill: #2d4344; }
-.tile.has-other { fill: #2a1f1f; stroke: var(--danger); stroke-width: 1; }
+.tile.has-other { fill: #2a1f1f; stroke: var(--danger); stroke-width: 1.2; }
+.tile.trap-mine { stroke: var(--warn); stroke-width: 1.4; stroke-dasharray: 2 1; }
 
 /* Peeked tiles: you sense the kind, not the content. */
 .tile.peeked            { stroke: #2a3036; }
@@ -310,6 +345,8 @@ select:focus, input:focus { outline: 1px solid var(--accent-2); }
 .lg.peek-eerie  { background: #1a1c2a; border-color: #2a2c40; }
 .lg.peek-art    { background: #2a2630; border-color: var(--accent); }
 .lg.dark        { background: #000; border-color: #1a2125; }
+.lg.b-mountain  { background: #2a2824; border-color: #3a382e; }
+.lg.b-river     { background: #1a2a36; border-color: #284454; }
 
 #action-bar {
   display: flex;

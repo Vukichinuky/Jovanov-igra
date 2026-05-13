@@ -116,6 +116,23 @@ const Game = (() => {
         logLine(`The salt around ${p.name} thins to nothing.`, "ghost");
       }
     }
+    // Wizards passively regenerate 1 mana each turn.
+    if (p.classId === "wizard") {
+      const m = adjustStat(p, "mana", +1);
+      if (m > 0) logLine(`${p.name} draws breath. Mana +${m}.`, "good");
+    }
+    // Anyone standing on a river starts the turn with +1 health (slow heal).
+    if (state.map) {
+      const tile = state.map.tiles[p.position];
+      if (tile && tile.biome === "river") {
+        const h = adjustStat(p, "health", +1);
+        if (h > 0) logLine(`The river is cold on ${p.name}'s skin. Health +${h}.`, "good");
+        if (p.classId === "wizard") {
+          const m = adjustStat(p, "mana", +1);
+          if (m > 0) logLine(`The river sings. Mana +${m}.`, "good");
+        }
+      }
+    }
   }
 
   /* Extend peeked tiles based on this player's sight (kind known, content hidden). */
@@ -175,25 +192,34 @@ const Game = (() => {
   /* ------- Turn actions available to the active player ------- */
   function availableActions(p) {
     const actions = [
-      { id: "move",    label: "Move (-1 sleep per tile)",      enabled: p.sleep >= 1 },
+      { id: "move",    label: "Move 1 tile (sleep cost varies by terrain)", enabled: p.sleep >= 1 },
       { id: "rest",    label: "Rest (+2 sleep, +1 fear, +1 health)", enabled: p.fear > 0 || p.health < p.maxes.health },
       { id: "scan",    label: "Scan the wood (-2 fear)",       enabled: p.fear >= 2 },
       { id: "treat",   label: (p.conditions && p.conditions.poison > 0) ? "Treat wound (-2 sleep, clear poison)" : "Treat wound (-2 sleep, +3 health)", enabled: p.sleep >= 2 && (p.conditions.poison > 0 || p.health < p.maxes.health) },
     ];
 
-    // Attack other players within range
     if (Combat.validTargets(state, p).length > 0) {
       actions.push({ id: "attack", label: "Attack another player", enabled: p.sleep >= 1 });
     }
 
-    // Wizard power
-    if (p.classId === "wizard" && p.mana >= 1) {
-      actions.push({ id: "wizard_read", label: "Read another's last path (-1 mana, -1 fear)", enabled: p.fear >= 1 });
+    // Wizard powers
+    if (p.classId === "wizard") {
+      if (p.mana >= 1) {
+        actions.push({ id: "wizard_read", label: "Read another's last path (-1 mana, -1 fear)", enabled: p.fear >= 1 });
+      }
+      if (p.mana >= 1) {
+        actions.push({ id: "wizard_stride", label: "Stride (-2 mana, glide up to 3 tiles)", enabled: p.mana >= 2 && p.sleep >= 1 });
+      }
     }
 
-    // Ranger power
-    if (p.classId === "ranger" && p.sleep >= 1) {
-      actions.push({ id: "ranger_trap", label: "Mark another's next card (-1 sleep)", enabled: true });
+    // Ranger powers
+    if (p.classId === "ranger") {
+      if (p.sleep >= 1) {
+        actions.push({ id: "ranger_trap", label: "Mark another's next card (-1 sleep)", enabled: true });
+      }
+      if (p.sleep >= 2) {
+        actions.push({ id: "ranger_plant_trap", label: "Plant a trap on a neighbor tile (-2 sleep)", enabled: true });
+      }
     }
 
     // End turn (e.g. if you don't want to do anything)
@@ -206,14 +232,16 @@ const Game = (() => {
   function doAction(actionId) {
     const p = currentPlayer();
     switch (actionId) {
-      case "move":        return actMoveChoose(p);
-      case "rest":        return actRest(p);
-      case "scan":        return actScan(p);
-      case "treat":       return actTreat(p);
-      case "attack":      return actAttackChoose(p);
-      case "wizard_read": return actWizardRead(p);
-      case "ranger_trap": return actRangerTrap(p);
-      case "wait":        return actWait(p);
+      case "move":          return actMoveChoose(p);
+      case "rest":          return actRest(p);
+      case "scan":          return actScan(p);
+      case "treat":         return actTreat(p);
+      case "attack":        return actAttackChoose(p);
+      case "wizard_read":   return actWizardRead(p);
+      case "wizard_stride": return actWizardStride(p);
+      case "ranger_trap":   return actRangerTrap(p);
+      case "ranger_plant_trap": return actPlantTrap(p);
+      case "wait":          return actWait(p);
     }
   }
 
@@ -227,29 +255,39 @@ const Game = (() => {
     });
   }
 
-  function commitMove(p, destId) {
-    adjustStat(p, "sleep", -1);
+  function commitMove(p, destId, options) {
+    const opts = options || {};
+    const tile = state.map.tiles[destId];
+    const cost = opts.freeMove ? 0 : Grid.moveCost(tile, p.classId);
+    if (cost > 0) adjustStat(p, "sleep", -cost);
+
     const fromCol = Grid.colOf(p.position), fromRow = Grid.rowOf(p.position);
     p.position = destId;
     p.revealedTiles.add(destId);
-    const tile = state.map.tiles[destId];
     const toCol = Grid.colOf(destId), toRow = Grid.rowOf(destId);
-    logLine(`${p.name} moves from (${fromCol},${fromRow}) to (${toCol},${toRow}).`, "dim");
+    const biomeNote = tile.biome === "mountain" ? " (mountain)" : tile.biome === "river" ? " (river)" : "";
+    logLine(`${p.name} moves to (${toCol},${toRow})${biomeNote}.`, "dim");
 
-    // Pending poison
-    const poison = p.secrets.find(s => s.tag === "poisoned");
-    if (poison) {
-      adjustStat(p, "sleep", -1);
-      logLine(`The poison takes another hour from ${p.name}.`, "bad");
-      p.secrets = p.secrets.filter(s => s.tag !== "poisoned");
+    // Trigger trap if there is one (planted by someone else).
+    if (tile.trap && tile.trap.plantedBy !== p.id) {
+      const planter = state.players.find(x => x.id === tile.trap.plantedBy);
+      const hit = -adjustStat(p, "health", -4);
+      adjustStat(p, "fear", -2);
+      logLine(`${p.name} steps on something nasty. -${hit} health, -2 fear.`, "bad");
+      // Planter gets a private note (they'll see it on their next turn).
+      if (planter) {
+        planter.secrets = planter.secrets || [];
+        planter.secrets.push({ tag: "trap_hit", text: `Your trap at tile #${destId} caught ${p.name}.` });
+      }
+      tile.trap = null;
     }
 
-    // If the tile has already been consumed, no card resolves. Show a quiet note.
+    // If the tile has already been consumed, no card resolves.
     if (tile.consumed) {
       UI.showCard(
         { title: `Tile #${destId}`, kind: "Known ground", body: "You have been here before. Nothing remains." },
         null,
-        () => finishTurn(p)
+        () => { if (!opts.skipFinish) finishTurn(p); else opts.afterMove && opts.afterMove(); }
       );
       return;
     }
@@ -377,12 +415,59 @@ const Game = (() => {
     adjustStat(p, "sleep", -1);
     const others = state.players.filter(o => o.alive && o.id !== p.id);
     UI.chooseTarget("Whose next path do you mark?", others, (target) => {
-      // The "trap" forces a Threat card on their next exploration.
       const threats = CARDS.filter(c => c.kind === "Threat");
       const forced = RNG.pick(threats);
       state.flags.rangerNextCardForce = { playerId: target.id, cardId: forced.id };
       logLine(`${p.name} leaves something behind for ${target.name}.`, "warn");
       finishTurn(p);
+    });
+  }
+
+  function actPlantTrap(p) {
+    const candidates = [p.position, ...Grid.neighbors(p.position)]
+      .filter(id => !Grid.isDark(id, state.darkRings) && !state.map.tiles[id].trap);
+    const list = candidates.map(id => ({ id, name: `Tile #${id}` }));
+    UI.chooseTarget("Where do you plant the trap?", list, (target) => {
+      adjustStat(p, "sleep", -2);
+      state.map.tiles[target.id].trap = { plantedBy: p.id };
+      p.secrets.push({ tag: "trap", text: `You planted a trap at tile #${target.id}.` });
+      logLine(`${p.name} sets something quietly.`, "dim");
+      finishTurn(p);
+    });
+  }
+
+  /* Wizard Stride — pick a destination up to 3 tiles away, paying 2 mana + 1
+     sleep total (regardless of biome). Each tile traversed reveals/resolves
+     only the final destination card (the wizard glides past the rest). */
+  function actWizardStride(p) {
+    // BFS to find tiles reachable within radius 3, excluding dark tiles.
+    const radius = 3;
+    const visited = new Set([p.position]);
+    let frontier = [p.position];
+    const reachable = [];
+    for (let d = 0; d < radius; d++) {
+      const next = [];
+      for (const t of frontier) {
+        for (const n of Grid.neighbors(t)) {
+          if (visited.has(n)) continue;
+          if (Grid.isDark(n, state.darkRings)) continue;
+          visited.add(n);
+          next.push(n);
+          reachable.push(n);
+        }
+      }
+      frontier = next;
+    }
+    if (reachable.length === 0) {
+      logLine(`${p.name} cannot stride from here.`, "dim");
+      return finishTurn(p);
+    }
+    UI.showMoveChoice(p, reachable, (destId) => {
+      adjustStat(p, "mana", -2);
+      // Skip biome costs by passing freeMove; commitMove will still pay 0 sleep.
+      // Charge a flat 1 sleep here for the gust of effort.
+      adjustStat(p, "sleep", -1);
+      commitMove(p, destId, { freeMove: true });
     });
   }
 

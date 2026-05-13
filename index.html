@@ -82,6 +82,11 @@
         <div id="map-header">
           <span id="map-label">The wood</span>
           <span id="map-coord" class="dim"></span>
+          <span id="map-zoom-controls">
+            <button id="map-zoom-out" class="zoom-btn" title="Zoom out">−</button>
+            <button id="map-zoom-in"  class="zoom-btn" title="Zoom in">+</button>
+            <button id="map-center"   class="zoom-btn" title="Center on you">⊙</button>
+          </span>
         </div>
         <div id="map-wrap"><svg id="map-svg" xmlns="http://www.w3.org/2000/svg"></svg></div>
         <div id="map-legend">
@@ -90,6 +95,8 @@
           <span class="lg revealed"></span><span>Walked</span>
           <span class="lg fog"></span><span>Unknown</span>
           <span class="lg reach"></span><span>Reachable</span>
+          <span class="lg b-mountain"></span><span>▲ Mountain</span>
+          <span class="lg b-river"></span><span>≈ River</span>
           <span class="lg peek-threat"></span><span>Threat near</span>
           <span class="lg peek-find"></span><span>Find near</span>
           <span class="lg peek-boon"></span><span>Boon near</span>

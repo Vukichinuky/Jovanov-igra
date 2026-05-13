@@ -72,16 +72,24 @@ const UI = (() => {
         showScreen("game");
         return;
       }
-      // Apply start-of-turn effects (poison) and refresh sight.
       Game.beginActiveTurn();
-      // beginActiveTurn may have killed the player by poison; re-check.
       const after = Game.currentPlayer();
-      if (!after || !after.alive) {
-        // game advanced; UI handles the next screen
-        return;
-      }
+      if (!after || !after.alive) return;
+      pendingCenterOnPlayer = true;
       renderGame();
       showScreen("game");
+    });
+
+    document.getElementById("map-zoom-in").addEventListener("click", () => {
+      zoomLevel = Math.min(2.5, zoomLevel + 0.25);
+      renderMap(Game.currentPlayer());
+    });
+    document.getElementById("map-zoom-out").addEventListener("click", () => {
+      zoomLevel = Math.max(0.5, zoomLevel - 0.25);
+      renderMap(Game.currentPlayer());
+    });
+    document.getElementById("map-center").addEventListener("click", () => {
+      scrollToPlayer();
     });
 
     $("#ghost-skip").addEventListener("click", () => Game.resolveGhostAction(null));
@@ -128,8 +136,11 @@ const UI = (() => {
     stage.innerHTML = "";
     stage.dataset.activeCard = "0";
 
-    stage.appendChild(el("div", "card-kind", `Tile #${p.position}`));
     const here = s.map ? s.map.tiles[p.position] : null;
+    const biomeLabel = here && here.biome === "mountain" ? "Mountain"
+                     : here && here.biome === "river"    ? "River"
+                     : "Wood";
+    stage.appendChild(el("div", "card-kind", `Tile #${p.position} — ${biomeLabel}`));
     const title = here && here.consumed
       ? `You stand at (${Grid.colOf(p.position)},${Grid.rowOf(p.position)}). Known ground.`
       : `You stand at (${Grid.colOf(p.position)},${Grid.rowOf(p.position)}).`;
@@ -209,25 +220,42 @@ const UI = (() => {
   }
 
   /* ---------- Map ---------- */
-  // Hex geometry (pointy-top, odd-r offset).
-  const HEX_SIZE = 11;                            // circumradius in px
-  const HEX_W = Math.sqrt(3) * HEX_SIZE;          // width
-  const HEX_H = 2 * HEX_SIZE;                     // height
-  const ROW_STEP = 1.5 * HEX_SIZE;                // vertical step between rows
+  // Hex geometry (pointy-top, odd-r offset). Bigger default; zoomable.
+  const BASE_HEX_SIZE = 22;
+  let zoomLevel = 1;          // 0.5 .. 2.5
+  let pendingCenterOnPlayer = true; // auto-center the first render after privacy continue
+
+  function hexSize()  { return BASE_HEX_SIZE * zoomLevel; }
+  function hexW()     { return Math.sqrt(3) * hexSize(); }
+  function rowStep()  { return 1.5 * hexSize(); }
 
   function tileCenter(col, row) {
-    const x = HEX_W * (col + 0.5 * (row & 1)) + HEX_W * 0.6;
-    const y = ROW_STEP * row + HEX_SIZE + 2;
+    const x = hexW() * (col + 0.5 * (row & 1)) + hexW() * 0.6;
+    const y = rowStep() * row + hexSize() + 2;
     return { x, y };
   }
 
   function hexPoints(cx, cy) {
     const pts = [];
+    const s = hexSize();
     for (let i = 0; i < 6; i++) {
-      const ang = Math.PI / 180 * (60 * i - 90); // pointy-top: -90 start
-      pts.push(`${(cx + HEX_SIZE * Math.cos(ang)).toFixed(2)},${(cy + HEX_SIZE * Math.sin(ang)).toFixed(2)}`);
+      const ang = Math.PI / 180 * (60 * i - 90);
+      pts.push(`${(cx + s * Math.cos(ang)).toFixed(2)},${(cy + s * Math.sin(ang)).toFixed(2)}`);
     }
     return pts.join(" ");
+  }
+
+  function scrollToPlayer() {
+    const p = Game.currentPlayer();
+    if (!p || p.position == null) return;
+    const { x, y } = tileCenter(Grid.colOf(p.position), Grid.rowOf(p.position));
+    const wrap = document.getElementById("map-wrap");
+    if (!wrap) return;
+    wrap.scrollTo({
+      left: Math.max(0, x - wrap.clientWidth / 2),
+      top:  Math.max(0, y - wrap.clientHeight / 2),
+      behavior: "smooth",
+    });
   }
 
   // Which biomes show as "landmarks" once consumed (different fill tint).
@@ -246,8 +274,8 @@ const UI = (() => {
     const svg = $("#map-svg");
     svg.innerHTML = "";
 
-    const totalW = HEX_W * (s.map.cols + 0.5) + HEX_W * 0.6;
-    const totalH = ROW_STEP * s.map.rows + HEX_SIZE + 4;
+    const totalW = hexW() * (s.map.cols + 0.5) + hexW() * 0.6;
+    const totalH = rowStep() * s.map.rows + hexSize() + 4;
     svg.setAttribute("viewBox", `0 0 ${totalW} ${totalH}`);
     svg.setAttribute("width", totalW);
     svg.setAttribute("height", totalH);
@@ -311,9 +339,16 @@ const UI = (() => {
       } else {
         cls += " revealed";
       }
+      // Biome tint (visible whenever the tile is at all visible)
+      if (!dark && (knownByMe || peeked || isMe || occByOther)) {
+        if (t.biome === "mountain") cls += " b-mountain";
+        else if (t.biome === "river") cls += " b-river";
+      }
       if (occByOther) cls += " has-other";
       if (isMe)       cls += " you";
       if (reachable)  cls += " reach";
+      // Only YOU know about traps you placed
+      if (t.trap && t.trap.plantedBy === p.id) cls += " trap-mine";
 
       poly.setAttribute("class", cls);
       poly.dataset.tile = t.id;
@@ -329,27 +364,47 @@ const UI = (() => {
 
       svg.appendChild(poly);
 
+      const fontSize = Math.max(8, Math.floor(hexSize() * 0.7));
+
+      // Biome glyph beneath the token if known (mountain ^ / river ~)
+      if (!dark && (knownByMe || peeked) && (t.biome === "mountain" || t.biome === "river")) {
+        const glyph = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        glyph.setAttribute("x", x);
+        glyph.setAttribute("y", y - Math.floor(hexSize() * 0.2));
+        glyph.setAttribute("text-anchor", "middle");
+        glyph.setAttribute("style", `font-size:${Math.floor(hexSize()*0.55)}px;fill:${t.biome === "mountain" ? "#7d6e4a" : "#5a8ea0"};opacity:0.55;`);
+        glyph.textContent = t.biome === "mountain" ? "▲" : "≈";
+        svg.appendChild(glyph);
+      }
+
       // Self token
       if (isMe) {
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", x);
-        text.setAttribute("y", y + 3);
+        text.setAttribute("y", y + Math.floor(hexSize() * 0.32));
         text.setAttribute("text-anchor", "middle");
+        text.setAttribute("style", `font-size:${fontSize}px`);
         text.textContent = "★";
         text.setAttribute("class", "token you");
         svg.appendChild(text);
       }
-      // Other players (only the ones we sense or remember)
       if (here && here.length) {
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", x);
-        text.setAttribute("y", y + 3);
+        text.setAttribute("y", y + Math.floor(hexSize() * 0.32));
         text.setAttribute("text-anchor", "middle");
+        text.setAttribute("style", `font-size:${fontSize}px`);
         text.textContent = here.map(h => h.player.name[0].toUpperCase()).join("");
         const isMemory = here.every(h => h.freshness === "memory");
         text.setAttribute("class", "token other" + (isMemory ? " memory" : ""));
         svg.appendChild(text);
       }
+    }
+
+    // Auto-pan to player once per turn start.
+    if (pendingCenterOnPlayer) {
+      pendingCenterOnPlayer = false;
+      setTimeout(scrollToPlayer, 0);
     }
 
     // Header coord
@@ -634,7 +689,7 @@ const UI = (() => {
     stage.appendChild(back);
   }
 
-  function chooseTarget(prompt, targets, onChoose) {
+  function chooseTarget(prompt, targets, onChoose, onCancel) {
     const stage = $("#card-stage");
     stage.innerHTML = "";
     stage.dataset.activeCard = "1";
@@ -647,6 +702,15 @@ const UI = (() => {
         renderGame();
       });
       optsWrap.appendChild(b);
+    }
+    if (onCancel !== false) {
+      const cancel = el("button", "btn", "Cancel");
+      cancel.addEventListener("click", () => {
+        clearStage();
+        renderGame();
+        if (typeof onCancel === "function") onCancel();
+      });
+      optsWrap.appendChild(cancel);
     }
     stage.appendChild(optsWrap);
   }

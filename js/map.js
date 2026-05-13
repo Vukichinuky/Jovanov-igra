@@ -63,7 +63,7 @@ const Grid = (() => {
     return best != null ? best : RNG.int(TOTAL);
   }
 
-  /* Build the map. Returns { tiles: [...], playerStarts: [tileIds...] } */
+  /* Build the map. Returns { tiles, playerStarts, ... } */
   function build(numPlayers) {
     const tiles = [];
     for (let i = 0; i < TOTAL; i++) {
@@ -71,10 +71,55 @@ const Grid = (() => {
         id: i,
         col: colOf(i),
         row: rowOf(i),
-        cardId: null,       // filled below
-        consumed: false,    // becomes true after first resolution
+        cardId: null,
+        biome: "wood",   // wood | mountain | river | clearing
+        consumed: false,
+        trap: null,      // { plantedBy: playerId } if a trap has been laid here
         revealedBy: new Set(),
       });
+    }
+
+    // ---- Biomes ----
+    // Mountain range: pick 2-3 seeds, grow each into a cluster of 6-10 tiles.
+    const mountainSeeds = 2 + RNG.int(2);
+    for (let s = 0; s < mountainSeeds; s++) {
+      const seed = RNG.int(TOTAL);
+      const wantSize = 6 + RNG.int(5);
+      const visited = new Set([seed]);
+      let frontier = [seed];
+      while (visited.size < wantSize && frontier.length) {
+        const next = [];
+        for (const t of frontier) {
+          tiles[t].biome = "mountain";
+          for (const n of neighbors(t)) {
+            if (visited.size >= wantSize) break;
+            if (visited.has(n)) continue;
+            if (RNG.chance(0.55)) {
+              visited.add(n);
+              next.push(n);
+            }
+          }
+        }
+        frontier = next;
+      }
+    }
+
+    // River: pick top-edge tile, drift to a bottom-edge tile via random walk.
+    {
+      let cur = idAt(RNG.range(2, COLS - 3), 0);
+      const seen = new Set([cur]);
+      tiles[cur].biome = "river";
+      for (let step = 0; step < ROWS * 2 + 5; step++) {
+        const nbrs = neighbors(cur).filter(n => !seen.has(n));
+        if (nbrs.length === 0) break;
+        // Prefer southward drift
+        nbrs.sort((a, b) => (rowOf(b) - rowOf(a)) + (RNG.next() - 0.5) * 1.4);
+        cur = nbrs[0];
+        seen.add(cur);
+        // Don't overwrite mountains; rivers cut around them.
+        if (tiles[cur].biome !== "mountain") tiles[cur].biome = "river";
+        if (rowOf(cur) === ROWS - 1) break;
+      }
     }
 
     // Pick landmark tile counts.
@@ -149,5 +194,23 @@ const Grid = (() => {
     return idAt(c, r);
   }
 
-  return { build, neighbors, distance, COLS, ROWS, TOTAL, idAt, colOf, rowOf, isDark, randomInteriorTile };
+  /* Sleep cost to move ONTO a tile, per class. */
+  function moveCost(tile, classId) {
+    if (!tile) return 1;
+    if (tile.biome === "mountain") {
+      return classId === "dwarf" ? 1 : 2;
+    }
+    if (tile.biome === "river") {
+      return 1; // rivers are slow but the cost is in sleep elsewhere; treat as 1
+    }
+    return 1;
+  }
+
+  return {
+    build, neighbors, distance,
+    COLS, ROWS, TOTAL,
+    idAt, colOf, rowOf,
+    isDark, randomInteriorTile,
+    moveCost,
+  };
 })();

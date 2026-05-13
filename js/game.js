@@ -17,8 +17,8 @@
 const Game = (() => {
   const ROUND_TOTAL = 15;
   const ARTEFACTS_TO_WIN = 2;
-  const BASE_SIGHT = 2;  // distance you naturally sense other players
-  const RING_EVERY = 3;  // rounds between each ring closure
+  const BASE_SIGHT = 1;  // you only sense one tile around you by default
+  const RING_EVERY = 3;
   const MAX_DARK_RINGS = 5;
 
   const state = {
@@ -75,10 +75,16 @@ const Game = (() => {
   // expose to other modules
   window._logLine = logLine;
 
-  /* How far this player can sense others naturally. */
+  /* How far this player can sense others / peek terrain. */
   function sightRange(p) {
-    const bonus = (CLASSES[p.classId].hooks.sightBonus || 0);
-    return BASE_SIGHT + bonus;
+    let r = BASE_SIGHT;
+    if (p.classId === "wizard") r += 1;                  // The wizard sees too much.
+    if (p.classId === "ranger") r += 1;                  // Eyes through fog.
+    if (p.classId === "dwarf" && state.map) {
+      const tile = state.map.tiles[p.position];
+      if (tile && tile.biome === "mountain") r += 1;     // High ground.
+    }
+    return r;
   }
 
   /* Does this player currently know where `other` is? */
@@ -488,7 +494,7 @@ const Game = (() => {
       logLine(`${p.name} goes mad in the wood. There is no body to find.`, "ghost");
     }
 
-    // Death by health <= 0 (would already be set in combat/card resolution)
+    // Death by health <= 0
     if (p.alive && p.health <= 0) {
       p.alive = false;
       p.ghost = p.ghost || Ghosts.create(p, null);
@@ -500,6 +506,15 @@ const Game = (() => {
       return endGame(p);
     }
 
+    // If dead, the body has nothing to say. Move on.
+    if (!p.alive) return advance();
+
+    // Otherwise, let the player read what just happened. They press End Turn
+    // when ready -> Game.endTurnConfirmed().
+    UI.showEndTurnPrompt(p);
+  }
+
+  function endTurnConfirmed() {
     advance();
   }
 
@@ -611,6 +626,7 @@ const Game = (() => {
     resolveGhostAction,
     logLine,
     beginActiveTurn,
+    endTurnConfirmed,
     canSee,
     sightRange,
   };

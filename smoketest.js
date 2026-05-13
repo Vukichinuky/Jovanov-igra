@@ -72,13 +72,20 @@ const path = require("path");
       if (!(await page.$("#game:not(.hidden)"))) break;
       const opts = await page.$$("#card-stage .card-options button:not([disabled])");
       if (opts.length === 0) break;
-      // pick the first option that isn't a cancel — but if it's the only one, click it
       let chosen = opts[0];
       for (const o of opts) {
         const t = (await o.textContent()) || "";
-        if (!/Don't|Step back|Walk past|Leave it/i.test(t)) { chosen = o; break; }
+        if (!/Don't|Step back|Walk past|Leave it|Cancel/i.test(t)) { chosen = o; break; }
       }
       await chosen.click();
+    }
+
+    // End the turn (read-the-outcome gate)
+    for (let k = 0; k < 3; k++) {
+      await page.waitForTimeout(60);
+      if (!(await page.$("#game:not(.hidden)"))) break;
+      const endBtn = await page.$("#card-stage .end-turn-bar button");
+      if (endBtn) { await endBtn.click(); break; }
     }
   }
 

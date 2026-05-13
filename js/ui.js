@@ -603,6 +603,41 @@ const UI = (() => {
     stage.innerHTML = "";
     stage.dataset.activeCard = "0";
   }
+
+  /* Show the End Turn gate so the player can read the outcome before the
+     device gets passed. Disables the action bar so they can't double-act. */
+  function showEndTurnPrompt(p) {
+    renderActivePanel(p);
+    renderOthers(p);
+    renderMap(p);
+    renderLog();
+
+    const stage = $("#card-stage");
+    if (stage.dataset.activeCard !== "1") {
+      // No card showing — paint the idle status panel first so they see
+      // their state, then append the End Turn bar.
+      renderIdleStage(p);
+    }
+
+    // Disable all action buttons (you have already taken your action)
+    for (const b of document.querySelectorAll("#action-bar button")) {
+      b.disabled = true;
+    }
+
+    // Remove any existing end-turn bar (re-renders).
+    const existing = stage.querySelector(".end-turn-bar");
+    if (existing) existing.remove();
+
+    const wrap = el("div", "end-turn-bar");
+    wrap.appendChild(el("p", "end-turn-note",
+      "Read what happened. When you're ready, end your turn and pass the device."));
+    const btn = el("button", "btn primary big", "End my turn ▶");
+    btn.addEventListener("click", () => {
+      Game.endTurnConfirmed();
+    });
+    wrap.appendChild(btn);
+    stage.appendChild(wrap);
+  }
   function clearCardOptions() {
     const opts = $("#card-stage").querySelector(".card-options");
     if (opts) opts.remove();
@@ -783,5 +818,6 @@ const UI = (() => {
     chooseTarget,
     clearStage,
     clearCardOptions,
+    showEndTurnPrompt,
   };
 })();

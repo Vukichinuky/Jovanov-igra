@@ -43,14 +43,13 @@ const CLASSES = {
     maxes: { health: 10, sleep: 10, fear: 12, mana: 0 },
     traits: [
       "Lower fear from animals and the forest itself.",
-      "May plant a trap on the next exploration card drawn by anyone (costs 1 sleep).",
+      "May plant a trap on a neighbor tile (costs 2 sleep).",
       "Aims true — ranged attacks have +1 chance to hit.",
-      "Eyes through fog — sights other players one tile further than most."
+      "Eyes through fog — sees one tile further than most."
     ],
     hooks: {
       animalFearReduction: 1,
       rangedHitBonus: 0.15,
-      sightBonus: 1
     }
   },
 };

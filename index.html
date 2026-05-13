@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Quiet Wood</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- SETUP SCREEN -->
+  <section id="setup" class="screen">
+    <header class="title-block">
+      <h1 class="title">The Quiet Wood</h1>
+      <p class="subtitle">A psychological survival game for 2&ndash;4.</p>
+      <p class="flavor">You feel safer than before. You do not feel safe.</p>
+    </header>
+
+    <div class="setup-panel">
+      <label class="field">
+        <span>Players</span>
+        <select id="player-count">
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+          <option value="4">4</option>
+        </select>
+      </label>
+
+      <div id="player-config"></div>
+
+      <label class="field">
+        <span>Seed (optional)</span>
+        <input id="seed-input" placeholder="leave blank for random" />
+      </label>
+
+      <button id="start-btn" class="btn primary">Enter the wood</button>
+    </div>
+
+    <footer class="setup-foot">
+      <p>Hot-seat. Pass the device between turns. Trust no screen you did not just look at.</p>
+    </footer>
+  </section>
+
+  <!-- PRIVACY SCREEN -->
+  <section id="privacy" class="screen hidden">
+    <div class="privacy-card">
+      <p class="privacy-label">Pass the device to</p>
+      <h2 id="privacy-name">&hellip;</h2>
+      <p id="privacy-flavor" class="privacy-flavor">The others should not see.</p>
+      <button id="privacy-continue" class="btn primary">I am alone. Continue.</button>
+    </div>
+  </section>
+
+  <!-- GAME SCREEN -->
+  <section id="game" class="screen hidden">
+    <aside id="sidebar">
+      <div id="round-info">
+        <div class="round-row">
+          <span class="lbl">Round</span><span id="round-num">1</span>
+          <span class="lbl">of</span><span id="round-total">10</span>
+        </div>
+        <div class="round-row dim">
+          <span id="phase-text">Day &mdash; choose your action.</span>
+        </div>
+      </div>
+
+      <div id="active-player">
+        <div class="active-name-row">
+          <h2 id="active-name">&mdash;</h2>
+          <span id="active-class" class="badge">&mdash;</span>
+        </div>
+        <div id="active-stats" class="stats"></div>
+        <div id="active-inventory" class="inventory"></div>
+      </div>
+
+      <div id="others-summary"></div>
+    </aside>
+
+    <main id="board">
+      <div id="action-bar"></div>
+      <div id="card-stage"></div>
+      <div id="log" aria-live="polite"></div>
+    </main>
+  </section>
+
+  <!-- GHOST TURN SCREEN -->
+  <section id="ghost-turn" class="screen hidden">
+    <div class="ghost-panel">
+      <h2 id="ghost-name">A cold name</h2>
+      <p class="ghost-flavor">You are not here. You remember being here.</p>
+      <div id="ghost-actions"></div>
+      <button id="ghost-skip" class="btn ghost">Do nothing this round</button>
+    </div>
+  </section>
+
+  <!-- END SCREEN -->
+  <section id="end" class="screen hidden">
+    <div class="end-panel">
+      <h2 id="end-title">The wood is quiet again.</h2>
+      <p id="end-flavor"></p>
+      <div id="end-summary"></div>
+      <button id="end-restart" class="btn primary">Begin again</button>
+    </div>
+  </section>
+
+</div>
+
+<script src="js/rng.js"></script>
+<script src="js/classes.js"></script>
+<script src="js/cards.js"></script>
+<script src="js/combat.js"></script>
+<script src="js/ghosts.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

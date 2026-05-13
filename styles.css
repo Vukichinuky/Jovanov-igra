@@ -223,6 +223,77 @@ select:focus, input:focus { outline: 1px solid var(--accent-2); }
   min-height: 100vh;
 }
 
+/* ---------- Map ---------- */
+#map-panel {
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(700px 300px at 50% -10%, rgba(180,160,120,0.05), transparent 60%),
+    var(--bg-2);
+  padding: 0.6rem 0.8rem 0.8rem;
+}
+#map-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px dashed var(--line);
+  margin-bottom: 0.5rem;
+}
+#map-label  { color: var(--ink-dim); letter-spacing: 0.18em; text-transform: uppercase; font-size: 0.75rem; }
+#map-coord  { color: var(--ink-faint); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.dim        { color: var(--ink-faint); }
+
+#map-wrap {
+  width: 100%;
+  overflow: auto;
+  /* light scroll on mobile if needed */
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  justify-content: center;
+}
+#map-svg {
+  display: block;
+}
+
+/* hex tile fills */
+.tile          { fill: #0e1316; stroke: #1a2125; stroke-width: 0.5; transition: fill 0.15s; }
+.tile.fog      { fill: #0a0d10; stroke: #14181b; }
+.tile.revealed { fill: #1c2226; stroke: #2a3036; }
+.tile.landmark { fill: #2a2620; stroke: #3a342a; }  /* ruined/consumed landmark */
+.tile.you      { fill: #2a3640; stroke: var(--accent); stroke-width: 1.4; }
+.tile.reach    { fill: #233233; stroke: var(--accent-2); stroke-width: 1.2; cursor: pointer; }
+.tile.reach:hover { fill: #2d4344; }
+.tile.has-other { fill: #2a1f1f; stroke: var(--danger); stroke-width: 1; }
+
+/* tokens drawn over tiles */
+.token        { font-family: "Iowan Old Style", Georgia, serif; font-size: 9px; pointer-events: none; }
+.token.you    { fill: var(--accent); }
+.token.other  { fill: var(--danger); }
+.token.dead   { fill: var(--ghost); font-style: italic; }
+
+/* legend */
+#map-legend {
+  display: flex; flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  color: var(--ink-faint);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  margin-top: 0.6rem;
+}
+.lg {
+  display: inline-block;
+  width: 12px; height: 12px;
+  border: 1px solid var(--line-2);
+  vertical-align: middle;
+  margin-right: 0.25rem;
+}
+.lg.you      { background: #2a3640; border-color: var(--accent); }
+.lg.other    { background: #2a1f1f; border-color: var(--danger); }
+.lg.revealed { background: #1c2226; }
+.lg.fog      { background: #0a0d10; }
+.lg.reach    { background: #233233; border-color: var(--accent-2); }
+
 #action-bar {
   display: flex;
   flex-wrap: wrap;
@@ -296,6 +367,7 @@ select:focus, input:focus { outline: 1px solid var(--accent-2); }
 @media (max-width: 880px) {
   #game { flex-direction: column; }
   #sidebar { width: 100%; min-height: auto; border-right: none; border-bottom: 1px solid var(--line); }
-  #board { padding: 1rem; }
+  #board { padding: 0.8rem; }
   .title { font-size: 2.4rem; }
+  #map-wrap { justify-content: flex-start; }
 }

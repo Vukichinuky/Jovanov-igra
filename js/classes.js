@@ -75,6 +75,10 @@ function makePlayer({ id, name, classId, isHuman = true }) {
     activeWeaponIdx: 0,
     ammo: { bolts: 0, bullets: 0 },
 
+    // position on the hex map; set during Game.start
+    position: null,
+    revealedTiles: new Set(),
+
     // hidden secrets known only when this player is active
     secrets: [],     // free-form notes ("there is a snake at the next clearing", etc.)
     artefacts: 0,

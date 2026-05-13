@@ -6,38 +6,54 @@
    Bluffing matters because other players see WHAT weapon you brandish
    but not WHETHER it's loaded. */
 
+const MELEE_RANGE = 1;   // adjacent or same tile (dist <= 1)
+const RANGED_RANGE = 3;  // ranged weapons reach up to 3 tiles away
+
 const Combat = {
-  // List who you can attack right now. In MVP everyone is "in the same wood",
-  // so any living player except self is a valid target.
+  // List who you can attack right now. Filter by distance.
+  // Melee weapons need dist <= 1; ranged need dist <= RANGED_RANGE.
   validTargets(state, attacker) {
-    return state.players.filter(p => p.alive && p.id !== attacker.id);
+    if (!state.map) {
+      return state.players.filter(p => p.alive && p.id !== attacker.id);
+    }
+    const hasMelee = attacker.weapons.some(w => w.tier <= 1);
+    const hasRanged = attacker.weapons.some(w => w.tier === 2) || attacker.classId === "wizard";
+    const maxReach = hasRanged ? RANGED_RANGE : (hasMelee ? MELEE_RANGE : 0);
+    return state.players.filter(p => {
+      if (!p.alive || p.id === attacker.id) return false;
+      const d = Grid.distance(attacker.position, p.position);
+      return d <= maxReach;
+    });
   },
 
-  // What attack options does the attacker actually have?
-  // We expose the weapon name to the defender via the log so bluffs work.
-  attackOptions(attacker) {
+  // What attack options does the attacker actually have against THIS defender?
+  // Distance constrains which weapons can be used.
+  attackOptions(attacker, defender) {
     const opts = [];
+    const dist = (defender && attacker.position != null && defender.position != null && typeof Grid !== "undefined")
+      ? Grid.distance(attacker.position, defender.position)
+      : 0;
+
     for (const w of attacker.weapons) {
       if (w.tier === 0) {
-        opts.push({
-          weapon: w,
-          label: `Threaten with ${w.name} (can't kill)`,
-        });
+        if (dist <= MELEE_RANGE) {
+          opts.push({ weapon: w, label: `Threaten with ${w.name} (can't kill)` });
+        }
       } else if (w.tier === 1) {
-        opts.push({
-          weapon: w,
-          label: `Swing ${w.name}`,
-        });
+        if (dist <= MELEE_RANGE) {
+          opts.push({ weapon: w, label: `Swing ${w.name}` });
+        }
       } else if (w.tier === 2) {
-        const have = attacker.ammo[w.ammo] || 0;
-        opts.push({
-          weapon: w,
-          label: `Fire ${w.name}${have > 0 ? "" : " (no ammo — bluff)"}`,
-        });
+        if (dist <= RANGED_RANGE) {
+          const have = attacker.ammo[w.ammo] || 0;
+          opts.push({
+            weapon: w,
+            label: `Fire ${w.name}${have > 0 ? "" : " (no ammo — bluff)"}`,
+          });
+        }
       }
     }
-    // Wizard can also fire a mana bolt (no ammo, costs mana)
-    if (attacker.classId === "wizard") {
+    if (attacker.classId === "wizard" && dist <= RANGED_RANGE) {
       const haveMana = attacker.mana > 0;
       opts.push({
         weapon: { id: "manabolt", name: "Mana Bolt", tier: 2, range: "ranged", ammo: "mana" },

@@ -48,6 +48,14 @@ const Game = (() => {
     state.log = [];
     state.flags = { souredFor: null, disturbedRestFor: null, rangerNextCardForce: null };
     state.lastDrawn = {};
+
+    // Build the hex map and place each player at their start tile.
+    state.map = Grid.build(players.length);
+    for (let i = 0; i < players.length; i++) {
+      players[i].position = state.map.playerStarts[i];
+      players[i].revealedTiles = new Set([players[i].position]);
+    }
+
     state.activeId = state.seatOrder[0];
     logLine("The wood breathes around you. Round 1 begins.", "dim");
     UI.toPrivacy(currentPlayer());
@@ -66,12 +74,12 @@ const Game = (() => {
   /* ------- Turn actions available to the active player ------- */
   function availableActions(p) {
     const actions = [
-      { id: "explore", label: "Explore the wood (-1 sleep)", enabled: p.sleep >= 1 },
+      { id: "move",    label: "Move (-1 sleep per tile)",   enabled: p.sleep >= 1 },
       { id: "rest",    label: "Rest (sleep +2)",            enabled: p.fear > 0 },
       { id: "scan",    label: "Scan the others (-1 fear)",  enabled: p.fear >= 1 },
     ];
 
-    // Attack other players
+    // Attack other players within range
     if (Combat.validTargets(state, p).length > 0) {
       actions.push({ id: "attack", label: "Attack another player", enabled: p.sleep >= 1 });
     }
@@ -96,7 +104,7 @@ const Game = (() => {
   function doAction(actionId) {
     const p = currentPlayer();
     switch (actionId) {
-      case "explore":     return actExplore(p);
+      case "move":        return actMoveChoose(p);
       case "rest":        return actRest(p);
       case "scan":        return actScan(p);
       case "attack":      return actAttackChoose(p);
@@ -107,10 +115,23 @@ const Game = (() => {
   }
 
   /* ------- Action implementations ------- */
-  function actExplore(p) {
-    adjustStat(p, "sleep", -1);
+  function actMoveChoose(p) {
+    const neighbors = Grid.neighbors(p.position);
+    UI.showMoveChoice(p, neighbors, (destId) => {
+      commitMove(p, destId);
+    });
+  }
 
-    // Apply poison (snake) if it was pending
+  function commitMove(p, destId) {
+    adjustStat(p, "sleep", -1);
+    const fromCol = Grid.colOf(p.position), fromRow = Grid.rowOf(p.position);
+    p.position = destId;
+    p.revealedTiles.add(destId);
+    const tile = state.map.tiles[destId];
+    const toCol = Grid.colOf(destId), toRow = Grid.rowOf(destId);
+    logLine(`${p.name} moves from (${fromCol},${fromRow}) to (${toCol},${toRow}).`, "dim");
+
+    // Pending poison
     const poison = p.secrets.find(s => s.tag === "poisoned");
     if (poison) {
       adjustStat(p, "sleep", -1);
@@ -118,28 +139,40 @@ const Game = (() => {
       p.secrets = p.secrets.filter(s => s.tag !== "poisoned");
     }
 
-    let card = Deck.draw(state, p);
+    // If the tile has already been consumed, no card resolves. Show a quiet note.
+    if (tile.consumed) {
+      UI.showCard(
+        { title: `Tile #${destId}`, kind: "Known ground", body: "You have been here before. Nothing remains." },
+        null,
+        () => finishTurn(p)
+      );
+      return;
+    }
 
-    // Sour Luck flag: ghosts ruin this draw — draw twice, take the worse.
+    // Reveal & resolve the tile's card.
+    let cardId = tile.cardId;
+
+    // Sour Luck flag: ghosts ruin this arrival — swap to a Threat card.
     if (state.flags.souredFor === p.id) {
       state.flags.souredFor = null;
-      const alt = Deck.draw(state, p);
-      // pick worse: any with kind "Threat" or "Eerie" beats a non-threat
-      const ranks = { "Threat": 3, "Eerie": 2, "Quiet": 1, "Find": 0, "Artefact": -1 };
-      const worse = (ranks[alt.kind] >= ranks[card.kind]) ? alt : card;
-      const better = worse === alt ? card : alt;
-      // put 'better' back on top of deck (next person gets a slightly better world)
-      state.deck.push(better.id);
-      card = worse;
+      const threats = CARDS.filter(c => c.kind === "Threat");
+      cardId = RNG.pick(threats).id;
       logLine(`Something tilts against ${p.name}.`, "ghost");
     }
 
-    state.lastDrawn[p.id] = card.id;
+    // Ranger-trap override on this player's next reveal.
+    if (state.flags.rangerNextCardForce && state.flags.rangerNextCardForce.playerId === p.id) {
+      cardId = state.flags.rangerNextCardForce.cardId;
+      state.flags.rangerNextCardForce = null;
+    }
+
+    state.lastDrawn[p.id] = cardId;
+    const card = CARDS.find(c => c.id === cardId);
+    tile.consumed = true;
 
     const out = card.resolve(state, p);
     UI.showCard(card, out, () => {
       if (out && out.log) for (const l of out.log) logLine(l.text, l.tone);
-      // If card had options, UI will call resolveOption -> finishTurn; otherwise advance now
       if (!out || !out.options) finishTurn(p);
     });
   }

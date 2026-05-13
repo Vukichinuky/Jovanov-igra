@@ -78,6 +78,20 @@
     </aside>
 
     <main id="board">
+      <div id="map-panel">
+        <div id="map-header">
+          <span id="map-label">The wood</span>
+          <span id="map-coord" class="dim"></span>
+        </div>
+        <div id="map-wrap"><svg id="map-svg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+        <div id="map-legend">
+          <span class="lg you"></span><span>You</span>
+          <span class="lg other"></span><span>Another</span>
+          <span class="lg revealed"></span><span>Walked</span>
+          <span class="lg fog"></span><span>Unknown</span>
+          <span class="lg reach"></span><span>Reachable</span>
+        </div>
+      </div>
       <div id="action-bar"></div>
       <div id="card-stage"></div>
       <div id="log" aria-live="polite"></div>
@@ -107,6 +121,7 @@
 </div>
 
 <script src="js/rng.js"></script>
+<script src="js/map.js"></script>
 <script src="js/classes.js"></script>
 <script src="js/cards.js"></script>
 <script src="js/combat.js"></script>

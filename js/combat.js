@@ -161,21 +161,23 @@ const Combat = {
       return { log: lines, killed: false };
     }
 
+    const bonus = attacker.damageBonus || 0;
+
     /* ---- Melee ---- */
     if (style === "heavy") {
-      const lost = -adjustStat(defender, "health", -6);
+      const lost = -adjustStat(defender, "health", -(6 + bonus));
       lines.push({ text: `${attacker.name} brings ${weapon.name} down on ${defender.name}. -${lost} health.`, tone: "bad" });
       maybeKill(state, attacker, defender, lines);
       return { log: lines, killed: !defender.alive };
     }
     if (style === "quick") {
-      const lost = -adjustStat(defender, "health", -3);
+      const lost = -adjustStat(defender, "health", -(3 + bonus));
       lines.push({ text: `${attacker.name} cuts ${defender.name} with ${weapon.name}. -${lost} health.`, tone: "bad" });
       maybeKill(state, attacker, defender, lines);
       return { log: lines, killed: !defender.alive };
     }
     if (style === "disarm") {
-      const lost = -adjustStat(defender, "health", -2);
+      const lost = -adjustStat(defender, "health", -(2 + bonus));
       // Drop some loose ammo
       const ammoKeys = Object.keys(defender.ammo).filter(k => (defender.ammo[k] || 0) > 0);
       if (ammoKeys.length > 0) {
@@ -198,7 +200,8 @@ const Combat = {
         adjustStat(defender, "fear", -1);
         return { log: lines, killed: false };
       }
-      const dmg = style === "snap" ? 4 : style === "aimed" ? 6 : 3;
+      const baseDmg = style === "snap" ? 4 : style === "aimed" ? 6 : 3;
+      const dmg = baseDmg + bonus;
       const lost = -adjustStat(defender, "health", -dmg);
       lines.push({ text: `${attacker.name} fires ${weapon.name} at ${defender.name}. -${lost} health.`, tone: "bad" });
       if (style === "maim") {
@@ -216,7 +219,7 @@ const Combat = {
         lines.push({ text: `${attacker.name} raises a hand. Nothing comes.`, tone: "dim" });
         return { log: lines, killed: false };
       }
-      const lost = -adjustStat(defender, "health", -5);
+      const lost = -adjustStat(defender, "health", -(5 + bonus));
       lines.push({ text: `A bolt of dark light strikes ${defender.name}. -${lost} health.`, tone: "bad" });
       maybeKill(state, attacker, defender, lines);
       return { log: lines, killed: !defender.alive };

@@ -79,14 +79,18 @@ function makePlayer({ id, name, classId, isHuman = true }) {
     // position on the hex map; set during Game.start
     position: null,
     revealedTiles: new Set(),
+    peekedTiles: new Set(),     // tiles you've sensed-at-distance (kind known)
     knownPositions: {},   // { otherId: { tile, round } } — last sighted by THIS player
     scanActiveThisRound: false,  // true the round you used Scan (reveals all)
 
     // active condition timers
-    conditions: { poison: 0 },   // turns remaining of each effect
+    conditions: { poison: 0, wardTurns: 0 },
+
+    // permanent character bonuses (from shrines etc.)
+    damageBonus: 0,
 
     // hidden secrets known only when this player is active
-    secrets: [],     // free-form notes ("there is a snake at the next clearing", etc.)
+    secrets: [],
     artefacts: 0,
 
     // social tracking

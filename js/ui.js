@@ -271,6 +271,20 @@ const UI = (() => {
       (visibleOthers[tileId] = visibleOthers[tileId] || []).push({ player: pl, freshness });
     }
 
+    // Card-kind lookup for peek hints.
+    const cardKind = (cid) => {
+      const c = CARDS.find(x => x.id === cid);
+      return c ? c.kind : "";
+    };
+    const kindClass = (kind) => {
+      if (kind === "Threat") return "k-threat";
+      if (kind === "Eerie")  return "k-eerie";
+      if (kind === "Find")   return "k-find";
+      if (kind === "Boon")   return "k-boon";
+      if (kind === "Artefact") return "k-artefact";
+      return "k-quiet";
+    };
+
     const tiles = s.map.tiles;
     for (const t of tiles) {
       const { x, y } = tileCenter(t.col, t.row);
@@ -278,14 +292,20 @@ const UI = (() => {
       poly.setAttribute("points", hexPoints(x, y));
 
       const knownByMe = p.revealedTiles && p.revealedTiles.has(t.id);
+      const peeked    = !knownByMe && p.peekedTiles && p.peekedTiles.has(t.id);
       const isMe      = t.id === p.position;
       const here      = visibleOthers[t.id];
       const occByOther = !!here;
       const reachable = activeReachableSet && activeReachableSet.has(t.id);
+      const dark      = Grid.isDark(t.id, s.darkRings || 0);
 
       let cls = "tile";
-      if (!knownByMe && !occByOther && !reachable && !isMe) {
+      if (dark) {
+        cls += " dark";
+      } else if (!knownByMe && !peeked && !occByOther && !reachable && !isMe) {
         cls += " fog";
+      } else if (peeked && !knownByMe) {
+        cls += " peeked " + kindClass(cardKind(t.cardId));
       } else if (LANDMARK_CARDS.has(t.cardId) && t.consumed && knownByMe) {
         cls += " landmark";
       } else {

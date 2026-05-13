@@ -266,6 +266,174 @@ const CARDS = [
       ] };
     }
   },
+
+  /* ---- Boons: permanent character changes ---- */
+  {
+    id: "shrine",
+    kind: "Boon",
+    title: "A small shrine",
+    body: "A figure carved from bone, eyes worn smooth. It wants something traded.",
+    weight: 1,
+    resolve(state, p) {
+      return {
+        log: [{ text: `${p.name} kneels at the shrine.`, tone: "warn" }],
+        options: [
+          {
+            label: "Offer your mind. Max fear -2, max health +3 (and heal 3).",
+            action: () => {
+              p.maxes.fear = Math.max(1, p.maxes.fear - 2);
+              if (p.fear > p.maxes.fear) p.fear = p.maxes.fear;
+              p.maxes.health += 3;
+              adjustStat(p, "health", +3);
+              return { log: [{ text: `${p.name} feels heavier, less afraid of the dark.`, tone: "good" }] };
+            }
+          },
+          {
+            label: "Offer your body. Max health -2, max fear +3 (and steady 3).",
+            action: () => {
+              p.maxes.health = Math.max(1, p.maxes.health - 2);
+              if (p.health > p.maxes.health) p.health = p.maxes.health;
+              p.maxes.fear += 3;
+              adjustStat(p, "fear", +3);
+              return { log: [{ text: `${p.name} feels lighter, slower to break in the mind.`, tone: "good" }] };
+            }
+          },
+          {
+            label: "Leave the shrine.",
+            action: () => ({ log: [{ text: `${p.name} walks past.`, tone: "dim" }] })
+          }
+        ]
+      };
+    }
+  },
+  {
+    id: "cursed_altar",
+    kind: "Boon",
+    title: "A cursed altar",
+    body: "Black stone. The carvings still bleed a little.",
+    weight: 1,
+    resolve(state, p) {
+      return {
+        log: [{ text: `${p.name} touches the altar.`, tone: "warn" }],
+        options: [
+          {
+            label: "Mark your hands. Max health -2 forever, +1 damage on every attack.",
+            action: () => {
+              p.maxes.health = Math.max(1, p.maxes.health - 2);
+              if (p.health > p.maxes.health) p.health = p.maxes.health;
+              p.damageBonus = (p.damageBonus || 0) + 1;
+              p.secrets.push({ tag: "altar", text: "Your hands burn. You hit harder." });
+              return { log: [{ text: `${p.name}'s hands burn. Damage +1 forever.`, tone: "good" }] };
+            }
+          },
+          {
+            label: "Drink from the bowl. -3 fear now, -2 max sleep forever, +2 damage.",
+            action: () => {
+              adjustStat(p, "fear", -3);
+              p.maxes.sleep = Math.max(2, p.maxes.sleep - 2);
+              if (p.sleep > p.maxes.sleep) p.sleep = p.maxes.sleep;
+              p.damageBonus = (p.damageBonus || 0) + 2;
+              p.secrets.push({ tag: "altar2", text: "You taste iron all the time now. You hit much harder." });
+              return { log: [{ text: `${p.name} drinks. The wood reels. Damage +2 forever.`, tone: "good" }] };
+            }
+          },
+          {
+            label: "Step back.",
+            action: () => ({ log: [{ text: `${p.name} backs away.`, tone: "dim" }] })
+          }
+        ]
+      };
+    }
+  },
+  {
+    id: "wishing_well",
+    kind: "Boon",
+    title: "A well of bright water",
+    body: "It reflects a sky you do not stand under.",
+    weight: 1,
+    resolve(state, p) {
+      return {
+        log: [{ text: `${p.name} looks down into the water.`, tone: "warn" }],
+        options: [
+          {
+            label: "Drop a coin. (Random permanent gift or curse.)",
+            action: () => {
+              const roll = RNG.int(8);
+              if (roll === 0) {
+                p.maxes.health += 2; adjustStat(p, "health", +2);
+                return { log: [{ text: `The water answers kindly. Max health +2.`, tone: "good" }] };
+              }
+              if (roll === 1) {
+                p.maxes.sleep += 2; adjustStat(p, "sleep", +2);
+                return { log: [{ text: `The water answers kindly. Max sleep +2.`, tone: "good" }] };
+              }
+              if (roll === 2) {
+                p.maxes.fear += 2; adjustStat(p, "fear", +2);
+                return { log: [{ text: `The water answers kindly. Max fear +2.`, tone: "good" }] };
+              }
+              if (roll === 3 && p.classId === "wizard") {
+                p.maxes.mana += 2; adjustStat(p, "mana", +2);
+                return { log: [{ text: `The water sings to the wizard. Max mana +2.`, tone: "good" }] };
+              }
+              if (roll === 4) {
+                p.damageBonus = (p.damageBonus || 0) + 1;
+                return { log: [{ text: `Something cold settles in your hands. Damage +1.`, tone: "good" }] };
+              }
+              if (roll === 5) {
+                p.maxes.health = Math.max(1, p.maxes.health - 1);
+                if (p.health > p.maxes.health) p.health = p.maxes.health;
+                return { log: [{ text: `The water remembers you. Max health -1.`, tone: "bad" }] };
+              }
+              if (roll === 6) {
+                p.conditions.poison = Math.max(p.conditions.poison || 0, 3);
+                return { log: [{ text: `The water was wrong. Poisoned 3 turns.`, tone: "bad" }] };
+              }
+              adjustStat(p, "fear", -3);
+              return { log: [{ text: `The face in the water was yours. Fear -3.`, tone: "bad" }] };
+            }
+          },
+          {
+            label: "Leave it.",
+            action: () => ({ log: [{ text: `${p.name} steps back.`, tone: "dim" }] })
+          }
+        ]
+      };
+    }
+  },
+  {
+    id: "stone_marker",
+    kind: "Boon",
+    title: "A stone with old marks",
+    body: "Three notches. One of them is fresher than the others.",
+    weight: 1,
+    resolve(state, p) {
+      // Find the nearest un-taken artefact tile
+      let best = null, bestDist = Infinity;
+      for (const t of state.map.tiles) {
+        if (t.cardId === "artefact_fragment" && !t.consumed) {
+          const d = Grid.distance(p.position, t.id);
+          if (d < bestDist) { bestDist = d; best = t.id; }
+        }
+      }
+      if (best == null) {
+        return { log: [{ text: `The marks mean nothing now. They have all been taken.`, tone: "dim" }] };
+      }
+      p.revealedTiles.add(best);
+      p.secrets.push({ tag: "marker", text: `An artefact still rests at tile #${best}.` });
+      return { log: [{ text: `${p.name} reads the marker. An artefact waits at tile #${best}, ${bestDist} away.`, tone: "good" }] };
+    }
+  },
+  {
+    id: "salt_circle",
+    kind: "Boon",
+    title: "A salt circle",
+    body: "Old, dry. Someone died trying to draw this.",
+    weight: 1,
+    resolve(state, p) {
+      p.conditions.wardTurns = 3;
+      return { log: [{ text: `${p.name} stands in the circle. Warded against ghosts for 3 turns.`, tone: "good" }] };
+    }
+  },
 ];
 
 /* ------------ helpers ------------ */

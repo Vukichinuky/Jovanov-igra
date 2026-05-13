@@ -18,14 +18,16 @@ const Game = (() => {
   const ROUND_TOTAL = 15;
   const ARTEFACTS_TO_WIN = 2;
   const BASE_SIGHT = 2;  // distance you naturally sense other players
+  const RING_EVERY = 3;  // rounds between each ring closure
+  const MAX_DARK_RINGS = 5;
 
   const state = {
     phase: "setup",
     round: 1,
     players: [],
-    seatOrder: [],          // ids in turn order
-    turnIdx: 0,             // index into seatOrder for living turns
-    ghostQueue: [],         // ids of dead players still to take a ghost turn this round
+    seatOrder: [],
+    turnIdx: 0,
+    ghostQueue: [],
     activeId: null,
     deck: [],
     log: [],
@@ -34,8 +36,8 @@ const Game = (() => {
       disturbedRestFor: null,
       rangerNextCardForce: null,
     },
-    // last drawn card, for wizard read-card power
-    lastDrawn: {},          // playerId -> cardId
+    lastDrawn: {},
+    darkRings: 0,           // outer rings of tiles that have gone dark
   };
 
   function start({ seed, players }) {
@@ -49,6 +51,7 @@ const Game = (() => {
     state.log = [];
     state.flags = { souredFor: null, disturbedRestFor: null, rangerNextCardForce: null };
     state.lastDrawn = {};
+    state.darkRings = 0;
 
     // Build the hex map and place each player at their start tile.
     state.map = Grid.build(players.length);
@@ -100,13 +103,41 @@ const Game = (() => {
 
   /* Apply ongoing conditions at the start of a player's turn. */
   function applyStartOfTurnEffects(p) {
-    if (!p.conditions) p.conditions = { poison: 0 };
+    if (!p.conditions) p.conditions = { poison: 0, wardTurns: 0 };
     if (p.conditions.poison > 0) {
       const hit = -adjustStat(p, "health", -1);
       p.conditions.poison -= 1;
       const left = p.conditions.poison;
       logLine(`The poison works on ${p.name}. -${hit} health.` + (left > 0 ? ` (${left} turn${left>1?"s":""} left)` : " (fades)"), "bad");
     }
+    if (p.conditions.wardTurns > 0) {
+      p.conditions.wardTurns -= 1;
+      if (p.conditions.wardTurns === 0) {
+        logLine(`The salt around ${p.name} thins to nothing.`, "ghost");
+      }
+    }
+  }
+
+  /* Extend peeked tiles based on this player's sight (kind known, content hidden). */
+  function refreshPeek(p) {
+    if (!state.map) return;
+    p.peekedTiles = p.peekedTiles || new Set();
+    const r = sightRange(p);
+    // BFS within radius r
+    const visited = new Set([p.position]);
+    let frontier = [p.position];
+    for (let d = 0; d < r; d++) {
+      const next = [];
+      for (const t of frontier) {
+        for (const n of Grid.neighbors(t)) {
+          if (visited.has(n)) continue;
+          visited.add(n);
+          next.push(n);
+        }
+      }
+      frontier = next;
+    }
+    for (const t of visited) p.peekedTiles.add(t);
   }
 
   /* Called by UI when the active player's turn actually starts (after the
@@ -115,12 +146,22 @@ const Game = (() => {
     const p = currentPlayer();
     if (!p) return;
 
-    // Scan persists for one round. If they didn't scan again on this turn, it
-    // wears off at the next.
     p.scanActiveThisRound = false;
 
+    // If the fog rolled in and is now on you, the dark eats and pushes inward.
+    if (state.map && Grid.isDark(p.position, state.darkRings)) {
+      const hit = -adjustStat(p, "health", -3);
+      adjustStat(p, "fear", -2);
+      logLine(`The dark closes over ${p.name}. -${hit} health, -2 fear.`, "ghost");
+      // Force-relocate to a random safe neighbor (or an interior tile).
+      const safeNeighbor = Grid.neighbors(p.position).find(n => !Grid.isDark(n, state.darkRings));
+      const dest = safeNeighbor != null ? safeNeighbor : Grid.randomInteriorTile(state.darkRings);
+      p.position = dest;
+      p.revealedTiles.add(dest);
+      logLine(`${p.name} stumbles inward to tile #${dest}.`, "dim");
+    }
+
     applyStartOfTurnEffects(p);
-    // death by poison
     if (p.alive && p.health <= 0) {
       p.alive = false;
       p.ghost = Ghosts.create(p, null);
@@ -128,6 +169,7 @@ const Game = (() => {
       return advance();
     }
     updateSightFor(p);
+    refreshPeek(p);
   }
 
   /* ------- Turn actions available to the active player ------- */
@@ -177,7 +219,9 @@ const Game = (() => {
 
   /* ------- Action implementations ------- */
   function actMoveChoose(p) {
-    const neighbors = Grid.neighbors(p.position);
+    const neighbors = Grid.neighbors(p.position).filter(
+      n => !Grid.isDark(n, state.darkRings)
+    );
     UI.showMoveChoice(p, neighbors, (destId) => {
       commitMove(p, destId);
     });
@@ -427,15 +471,37 @@ const Game = (() => {
     if (state.round > ROUND_TOTAL) {
       return endGame(null);
     }
+
+    // The wood closes in every RING_EVERY rounds.
+    const targetRings = Math.min(MAX_DARK_RINGS, Math.floor((state.round - 1) / RING_EVERY));
+    if (targetRings > state.darkRings) {
+      state.darkRings = targetRings;
+      logLine(`The fog rolls in. The wood is smaller. Outer ${state.darkRings} ring${state.darkRings > 1 ? "s" : ""} are dark.`, "ghost");
+      // Move any unconsumed artefacts out of the dark zone into the interior.
+      for (const t of state.map.tiles) {
+        if (t.consumed) continue;
+        if (!Grid.isDark(t.id, state.darkRings)) continue;
+        if (t.cardId === "artefact_fragment") {
+          let dest = Grid.randomInteriorTile(state.darkRings);
+          let tries = 0;
+          while ((state.map.tiles[dest].cardId === "artefact_fragment" || state.map.tiles[dest].consumed) && tries < 20) {
+            dest = Grid.randomInteriorTile(state.darkRings);
+            tries++;
+          }
+          state.map.tiles[dest].cardId = "artefact_fragment";
+          state.map.tiles[dest].consumed = false;
+          t.cardId = "empty_clearing";
+        }
+      }
+    }
+
     state.turnIdx = 0;
-    // skip to first living player
     while (state.turnIdx < state.seatOrder.length) {
       const p = state.players.find(x => x.id === state.seatOrder[state.turnIdx]);
       if (p && p.alive) break;
       state.turnIdx += 1;
     }
     if (state.turnIdx >= state.seatOrder.length) {
-      // no one alive — the wood wins
       return endGame(null);
     }
     state.activeId = state.seatOrder[state.turnIdx];

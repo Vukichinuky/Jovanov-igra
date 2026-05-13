@@ -258,12 +258,22 @@ select:focus, input:focus { outline: 1px solid var(--accent-2); }
 /* hex tile fills */
 .tile          { fill: #0e1316; stroke: #1a2125; stroke-width: 0.5; transition: fill 0.15s; }
 .tile.fog      { fill: #0a0d10; stroke: #14181b; }
+.tile.dark     { fill: #000; stroke: #0a0d10; }   /* fog-closed-in wall */
 .tile.revealed { fill: #1c2226; stroke: #2a3036; }
-.tile.landmark { fill: #2a2620; stroke: #3a342a; }  /* ruined/consumed landmark */
+.tile.landmark { fill: #2a2620; stroke: #3a342a; }
 .tile.you      { fill: #2a3640; stroke: var(--accent); stroke-width: 1.4; }
 .tile.reach    { fill: #233233; stroke: var(--accent-2); stroke-width: 1.2; cursor: pointer; }
 .tile.reach:hover { fill: #2d4344; }
 .tile.has-other { fill: #2a1f1f; stroke: var(--danger); stroke-width: 1; }
+
+/* Peeked tiles: you sense the kind, not the content. */
+.tile.peeked            { stroke: #2a3036; }
+.tile.peeked.k-quiet    { fill: #14181b; }
+.tile.peeked.k-threat   { fill: #2a1818; stroke: #4a2424; }
+.tile.peeked.k-eerie    { fill: #1a1c2a; stroke: #2a2c40; }
+.tile.peeked.k-find     { fill: #2a2418; stroke: #4a3e20; }
+.tile.peeked.k-boon     { fill: #1a2818; stroke: #2a4028; }
+.tile.peeked.k-artefact { fill: #2a2630; stroke: var(--accent); stroke-width: 1.2; }
 
 /* tokens drawn over tiles */
 .token         { font-family: "Iowan Old Style", Georgia, serif; font-size: 9px; pointer-events: none; }
@@ -289,11 +299,17 @@ select:focus, input:focus { outline: 1px solid var(--accent-2); }
   vertical-align: middle;
   margin-right: 0.25rem;
 }
-.lg.you      { background: #2a3640; border-color: var(--accent); }
-.lg.other    { background: #2a1f1f; border-color: var(--danger); }
-.lg.revealed { background: #1c2226; }
-.lg.fog      { background: #0a0d10; }
-.lg.reach    { background: #233233; border-color: var(--accent-2); }
+.lg.you         { background: #2a3640; border-color: var(--accent); }
+.lg.other       { background: #2a1f1f; border-color: var(--danger); }
+.lg.revealed    { background: #1c2226; }
+.lg.fog         { background: #0a0d10; }
+.lg.reach       { background: #233233; border-color: var(--accent-2); }
+.lg.peek-threat { background: #2a1818; border-color: #4a2424; }
+.lg.peek-find   { background: #2a2418; border-color: #4a3e20; }
+.lg.peek-boon   { background: #1a2818; border-color: #2a4028; }
+.lg.peek-eerie  { background: #1a1c2a; border-color: #2a2c40; }
+.lg.peek-art    { background: #2a2630; border-color: var(--accent); }
+.lg.dark        { background: #000; border-color: #1a2125; }
 
 #action-bar {
   display: flex;

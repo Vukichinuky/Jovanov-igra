@@ -17,13 +17,13 @@ const Ghosts = {
 
   // Action menu shown when this ghost's turn comes up.
   actionsFor(state, ghost) {
-    const living = state.players.filter(p => p.alive);
-    if (living.length === 0) return [];
+    // Skip warded players entirely.
+    const targetable = state.players.filter(p => p.alive && !(p.conditions && p.conditions.wardTurns > 0));
+    if (targetable.length === 0) return [];
 
     const opts = [];
 
-    // 1) Whisper: target loses 1 fear
-    for (const target of living) {
+    for (const target of targetable) {
       opts.push({
         kind: "whisper",
         label: `Whisper at ${target.name} (their fear -1)`,
@@ -34,9 +34,7 @@ const Ghosts = {
         }
       });
     }
-
-    // 2) Sour Luck: ghost taints the *next* card a chosen target draws
-    for (const target of living) {
+    for (const target of targetable) {
       opts.push({
         kind: "sour",
         label: `Sour ${target.name}'s next path`,
@@ -47,9 +45,7 @@ const Ghosts = {
         }
       });
     }
-
-    // 3) Disturb Rest: target's next Rest action will not restore sleep
-    for (const target of living) {
+    for (const target of targetable) {
       opts.push({
         kind: "disturb",
         label: `Disturb ${target.name}'s rest`,

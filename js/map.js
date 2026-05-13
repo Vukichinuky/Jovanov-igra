@@ -79,10 +79,17 @@ const Grid = (() => {
 
     // Pick landmark tile counts.
     const landmarkPlan = [
-      { cardId: "artefact_fragment", n: 3, minSpread: 8 },  // race to find these
-      { cardId: "ruins_npc",         n: 2, minSpread: 6 },
-      { cardId: "chest",             n: 5, minSpread: 4 },
+      { cardId: "artefact_fragment", n: 3, minSpread: 8 },
+      { cardId: "ruins_npc",         n: 3, minSpread: 5 },
+      { cardId: "chest",             n: 6, minSpread: 3 },
       { cardId: "hidden_cache",      n: 4, minSpread: 4 },
+      // Boons (permanent stat changes / one-shot help)
+      { cardId: "shrine",            n: 2, minSpread: 6 },
+      { cardId: "cursed_altar",      n: 2, minSpread: 6 },
+      { cardId: "wishing_well",      n: 3, minSpread: 5 },
+      { cardId: "stone_marker",      n: 2, minSpread: 6 },
+      { cardId: "salt_circle",       n: 2, minSpread: 5 },
+      // Threats & eerie
       { cardId: "wild_boar",         n: 4, minSpread: 3 },
       { cardId: "wolves",            n: 3, minSpread: 4 },
       { cardId: "snake",             n: 5, minSpread: 3 },
@@ -109,22 +116,38 @@ const Grid = (() => {
       }
     }
 
-    // Player starting tiles — spread across the map. Corners-ish.
+    // Player starting tiles — closer together so they actually meet during
+    // a 15-round game. Outer ring will close in further as rounds pass.
     const corners = [
-      idAt(2, 2),
-      idAt(COLS - 3, ROWS - 3),
-      idAt(COLS - 3, 2),
-      idAt(2, ROWS - 3),
+      idAt(7, 7),
+      idAt(COLS - 8, ROWS - 8),
+      idAt(COLS - 8, 7),
+      idAt(7, ROWS - 8),
     ];
     const playerStarts = corners.slice(0, numPlayers).map((startId) => {
-      // make sure the start tile is empty (no monster on spawn)
       tiles[startId].cardId = "empty_clearing";
-      tiles[startId].consumed = true; // start tile is "known"
+      tiles[startId].consumed = true;
       return startId;
     });
 
     return { tiles, playerStarts, cols: COLS, rows: ROWS, total: TOTAL };
   }
 
-  return { build, neighbors, distance, COLS, ROWS, TOTAL, idAt, colOf, rowOf };
+  /* Is this tile inside the "dark" outer ring of N tiles? */
+  function isDark(tileId, darkRings) {
+    if (!darkRings || darkRings <= 0) return false;
+    const c = colOf(tileId), r = rowOf(tileId);
+    return c < darkRings || c >= COLS - darkRings ||
+           r < darkRings || r >= ROWS - darkRings;
+  }
+
+  /* Pick a safe interior tile, used to relocate things from the dark ring. */
+  function randomInteriorTile(darkRings) {
+    const margin = darkRings + 1;
+    const c = margin + RNG.int(COLS - 2 * margin);
+    const r = margin + RNG.int(ROWS - 2 * margin);
+    return idAt(c, r);
+  }
+
+  return { build, neighbors, distance, COLS, ROWS, TOTAL, idAt, colOf, rowOf, isDark, randomInteriorTile };
 })();

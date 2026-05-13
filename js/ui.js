@@ -258,12 +258,36 @@ const UI = (() => {
     });
   }
 
-  // Which biomes show as "landmarks" once consumed (different fill tint).
+  // Tiles that should keep a visible "consumed" tint after their event
+  // resolves.
   const LANDMARK_CARDS = new Set([
     "artefact_fragment", "ruins_npc", "chest", "hidden_cache",
     "wild_boar", "wolves", "snake", "whisper", "shape_at_treeline",
-    "lost_trail", "ghost_sighting", "still_water"
+    "lost_trail", "ghost_sighting", "still_water",
+    "shrine", "cursed_altar", "wishing_well", "stone_marker", "salt_circle"
   ]);
+
+  /* Unicode pictograph + color for each card type. Shown on the map when the
+     tile is revealed or peeked, faded when consumed or only peeked. */
+  const CARD_GLYPHS = {
+    artefact_fragment: { ch: "✦", color: "#e6cf90" },
+    chest:             { ch: "▣", color: "#caa05a" },
+    hidden_cache:      { ch: "◇", color: "#b09870" },
+    ruins_npc:         { ch: "⌂", color: "#a08868" },
+    shrine:            { ch: "✚", color: "#a8c490" },
+    cursed_altar:      { ch: "✖", color: "#a8584c" },
+    wishing_well:      { ch: "○", color: "#88b8c8" },
+    stone_marker:      { ch: "‖", color: "#a89870" },
+    salt_circle:       { ch: "◌", color: "#d0c8b0" },
+    snake:             { ch: "∽", color: "#7da050" },
+    wild_boar:         { ch: "♉", color: "#9a6848" },
+    wolves:            { ch: "W", color: "#999988" },
+    whisper:           { ch: "?", color: "#7080a0" },
+    shape_at_treeline: { ch: "△", color: "#8090a0" },
+    lost_trail:        { ch: "↻", color: "#909090" },
+    ghost_sighting:    { ch: "†", color: "#a8b9c0" },
+    still_water:       { ch: "≈", color: "#88a8b8" },
+  };
 
   let activeReachableSet = null;       // set of tile ids highlighted as reachable
   let activeReachableHandler = null;   // function(destId) when a reachable tile is clicked
@@ -365,25 +389,51 @@ const UI = (() => {
       svg.appendChild(poly);
 
       const fontSize = Math.max(8, Math.floor(hexSize() * 0.7));
+      const tileVisible = !dark && (knownByMe || peeked || occByOther || isMe);
 
-      // Biome glyph beneath the token if known (mountain ^ / river ~)
-      if (!dark && (knownByMe || peeked) && (t.biome === "mountain" || t.biome === "river")) {
-        const glyph = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        glyph.setAttribute("x", x);
-        glyph.setAttribute("y", y - Math.floor(hexSize() * 0.2));
-        glyph.setAttribute("text-anchor", "middle");
-        glyph.setAttribute("style", `font-size:${Math.floor(hexSize()*0.55)}px;fill:${t.biome === "mountain" ? "#7d6e4a" : "#5a8ea0"};opacity:0.55;`);
-        glyph.textContent = t.biome === "mountain" ? "▲" : "≈";
-        svg.appendChild(glyph);
+      /* Decorate the tile:
+         - Landmarks (chest, snake, shrine, artefact, ...) show their card
+           glyph. Faded if consumed (already taken) or only peeked.
+         - Otherwise show a biome glyph for mountain / river. */
+      if (tileVisible) {
+        const cardG = CARD_GLYPHS[t.cardId];
+        if (cardG) {
+          const glyph = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          glyph.setAttribute("x", x);
+          glyph.setAttribute("y", y - Math.floor(hexSize() * 0.05));
+          glyph.setAttribute("text-anchor", "middle");
+          glyph.setAttribute("dominant-baseline", "middle");
+          const opacity = t.consumed ? 0.22 : (peeked && !knownByMe ? 0.55 : 1.0);
+          glyph.setAttribute("style",
+            `font-size:${Math.floor(hexSize()*0.78)}px;` +
+            `fill:${cardG.color};opacity:${opacity};` +
+            `font-family: "Iowan Old Style", Georgia, serif;`);
+          glyph.textContent = cardG.ch;
+          svg.appendChild(glyph);
+        } else if (t.biome === "mountain" || t.biome === "river") {
+          const glyph = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          glyph.setAttribute("x", x);
+          glyph.setAttribute("y", y - Math.floor(hexSize() * 0.05));
+          glyph.setAttribute("text-anchor", "middle");
+          glyph.setAttribute("dominant-baseline", "middle");
+          const color = t.biome === "mountain" ? "#9a8862" : "#7ab0c5";
+          glyph.setAttribute("style", `font-size:${Math.floor(hexSize()*0.7)}px;fill:${color};opacity:0.6;`);
+          glyph.textContent = t.biome === "mountain" ? "▲" : "≈";
+          svg.appendChild(glyph);
+        }
       }
 
-      // Self token
+      // Tokens go in the bottom third of the hex so they don't cover the
+      // landmark icon.
+      const tokenY = y + Math.floor(hexSize() * 0.55);
+      const tokenSize = Math.max(8, Math.floor(hexSize() * 0.55));
+
       if (isMe) {
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", x);
-        text.setAttribute("y", y + Math.floor(hexSize() * 0.32));
+        text.setAttribute("y", tokenY);
         text.setAttribute("text-anchor", "middle");
-        text.setAttribute("style", `font-size:${fontSize}px`);
+        text.setAttribute("style", `font-size:${tokenSize}px;font-weight:bold;`);
         text.textContent = "★";
         text.setAttribute("class", "token you");
         svg.appendChild(text);
@@ -391,9 +441,9 @@ const UI = (() => {
       if (here && here.length) {
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", x);
-        text.setAttribute("y", y + Math.floor(hexSize() * 0.32));
+        text.setAttribute("y", tokenY);
         text.setAttribute("text-anchor", "middle");
-        text.setAttribute("style", `font-size:${fontSize}px`);
+        text.setAttribute("style", `font-size:${tokenSize}px;font-weight:bold;`);
         text.textContent = here.map(h => h.player.name[0].toUpperCase()).join("");
         const isMemory = here.every(h => h.freshness === "memory");
         text.setAttribute("class", "token other" + (isMemory ? " memory" : ""));

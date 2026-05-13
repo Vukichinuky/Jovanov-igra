@@ -277,38 +277,41 @@ select:focus, input:focus { outline: 1px solid var(--accent-2); }
   display: block;
 }
 
-/* hex tile fills */
+/* hex tile fills — biome first, then state modifiers. */
 .tile          { fill: #0e1316; stroke: #1a2125; stroke-width: 0.5; transition: fill 0.15s; }
 .tile.fog      { fill: #0a0d10; stroke: #14181b; }
 .tile.dark     { fill: #000; stroke: #0a0d10; }
 
-/* Revealed by biome */
-.tile.revealed                { fill: #1c2226; stroke: #2a3036; }
-.tile.revealed.b-mountain     { fill: #2a2824; stroke: #3a382e; }
-.tile.revealed.b-river        { fill: #1a2a36; stroke: #284454; }
+/* Revealed by biome — Civ-ish palette but muted to match the wood. */
+.tile.revealed                { fill: #1f2e1f; stroke: #324a32; }   /* wood */
+.tile.revealed.b-mountain     { fill: #423828; stroke: #5e4e34; }   /* mountain */
+.tile.revealed.b-river        { fill: #15405e; stroke: #2a6080; }   /* river */
 
-/* Peeked tiles get the biome color too, dimmer */
-.tile.peeked.b-mountain       { fill: #1d1b18; }
-.tile.peeked.b-river          { fill: #122028; }
+/* Peeked tiles: dimmer biome colour so silhouette still reads. */
+.tile.peeked                  { fill: #131c14; stroke: #1d2a1d; }
+.tile.peeked.b-mountain       { fill: #2a2418; stroke: #38301f; }
+.tile.peeked.b-river          { fill: #0e2a3e; stroke: #1f3e58; }
 
-.tile.landmark { fill: #2a2620; stroke: #3a342a; }
-.tile.landmark.b-mountain { fill: #322c22; stroke: #4a3c2a; }
-.tile.landmark.b-river    { fill: #1c2c34; stroke: #2e4a58; }
+/* Kind-tinted peek borders — keeps the threat/find/boon hint as a stroke
+   instead of a fill (so the biome colour stays underneath). */
+.tile.peeked.k-threat   { stroke: #6a2c2c; stroke-width: 1.0; }
+.tile.peeked.k-eerie    { stroke: #3a3e6a; stroke-width: 1.0; }
+.tile.peeked.k-find     { stroke: #6e5a2a; stroke-width: 1.0; }
+.tile.peeked.k-boon     { stroke: #3a5e3a; stroke-width: 1.0; }
+.tile.peeked.k-artefact { stroke: var(--accent); stroke-width: 1.4; }
 
-.tile.you      { fill: #2a3640; stroke: var(--accent); stroke-width: 1.6; }
+/* Consumed landmark — slightly worn down. */
+.tile.landmark             { fill: #2a2620; stroke: #3a342a; }
+.tile.landmark.b-mountain  { fill: #423828; stroke: #5a4830; }
+.tile.landmark.b-river     { fill: #15405e; stroke: #2a6080; }
+
+.tile.you      { fill: #2a3640; stroke: var(--accent); stroke-width: 1.8; }
+.tile.you.b-mountain { fill: #4a3e2a; }
+.tile.you.b-river    { fill: #1f4e72; }
 .tile.reach    { fill: #233233; stroke: var(--accent-2); stroke-width: 1.4; cursor: pointer; }
 .tile.reach:hover { fill: #2d4344; }
-.tile.has-other { fill: #2a1f1f; stroke: var(--danger); stroke-width: 1.2; }
-.tile.trap-mine { stroke: var(--warn); stroke-width: 1.4; stroke-dasharray: 2 1; }
-
-/* Peeked tiles: you sense the kind, not the content. */
-.tile.peeked            { stroke: #2a3036; }
-.tile.peeked.k-quiet    { fill: #14181b; }
-.tile.peeked.k-threat   { fill: #2a1818; stroke: #4a2424; }
-.tile.peeked.k-eerie    { fill: #1a1c2a; stroke: #2a2c40; }
-.tile.peeked.k-find     { fill: #2a2418; stroke: #4a3e20; }
-.tile.peeked.k-boon     { fill: #1a2818; stroke: #2a4028; }
-.tile.peeked.k-artefact { fill: #2a2630; stroke: var(--accent); stroke-width: 1.2; }
+.tile.has-other { fill: #3a201c; stroke: var(--danger); stroke-width: 1.4; }
+.tile.trap-mine { stroke: var(--warn); stroke-width: 1.6; stroke-dasharray: 3 1.5; }
 
 /* tokens drawn over tiles */
 .token         { font-family: "Iowan Old Style", Georgia, serif; font-size: 9px; pointer-events: none; }
@@ -335,18 +338,18 @@ select:focus, input:focus { outline: 1px solid var(--accent-2); }
   margin-right: 0.25rem;
 }
 .lg.you         { background: #2a3640; border-color: var(--accent); }
-.lg.other       { background: #2a1f1f; border-color: var(--danger); }
-.lg.revealed    { background: #1c2226; }
+.lg.other       { background: #3a201c; border-color: var(--danger); }
+.lg.revealed    { background: #1f2e1f; border-color: #324a32; }
 .lg.fog         { background: #0a0d10; }
 .lg.reach       { background: #233233; border-color: var(--accent-2); }
-.lg.peek-threat { background: #2a1818; border-color: #4a2424; }
-.lg.peek-find   { background: #2a2418; border-color: #4a3e20; }
-.lg.peek-boon   { background: #1a2818; border-color: #2a4028; }
-.lg.peek-eerie  { background: #1a1c2a; border-color: #2a2c40; }
-.lg.peek-art    { background: #2a2630; border-color: var(--accent); }
+.lg.peek-threat { background: #1f2e1f; border-color: #6a2c2c; }
+.lg.peek-find   { background: #1f2e1f; border-color: #6e5a2a; }
+.lg.peek-boon   { background: #1f2e1f; border-color: #3a5e3a; }
+.lg.peek-eerie  { background: #1f2e1f; border-color: #3a3e6a; }
+.lg.peek-art    { background: #1f2e1f; border-color: var(--accent); }
 .lg.dark        { background: #000; border-color: #1a2125; }
-.lg.b-mountain  { background: #2a2824; border-color: #3a382e; }
-.lg.b-river     { background: #1a2a36; border-color: #284454; }
+.lg.b-mountain  { background: #423828; border-color: #5e4e34; }
+.lg.b-river     { background: #15405e; border-color: #2a6080; }
 
 #action-bar {
   display: flex;

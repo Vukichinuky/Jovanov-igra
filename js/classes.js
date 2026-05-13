@@ -6,17 +6,16 @@ const CLASSES = {
     id: "dwarf",
     name: "Dwarf",
     blurb: "Heavy. Slow to break.",
-    base: { health: 6, sleep: 5, fear: 5, mana: 0 },
-    maxes: { health: 6, sleep: 5, fear: 5, mana: 0 },
+    base: { health: 12, sleep: 10, fear: 10, mana: 0 },
+    maxes: { health: 12, sleep: 10, fear: 10, mana: 0 },
     traits: [
       "Body of stone — resists 1 health on most exploration injuries.",
       "Reads ruins better — chest mishaps are reduced.",
       "No mana. No spells."
     ],
-    // hooks consumed by other modules
     hooks: {
       mitigateInjury: (amt) => Math.max(0, amt - 1),
-      chestBadRollBonus: 1, // adds to roll when opening, raising chance of good outcome
+      chestBadRollBonus: 1,
     }
   },
 
@@ -24,8 +23,8 @@ const CLASSES = {
     id: "wizard",
     name: "Wizard",
     blurb: "Fragile. Sees too much.",
-    base: { health: 4, sleep: 5, fear: 5, mana: 3 },
-    maxes: { health: 4, sleep: 5, fear: 5, mana: 5 },
+    base: { health: 8, sleep: 10, fear: 10, mana: 6 },
+    maxes: { health: 8, sleep: 10, fear: 10, mana: 8 },
     traits: [
       "Spends mana to attack at range without ammo.",
       "Loses 1 extra fear on ghost or whisper events.",
@@ -40,16 +39,18 @@ const CLASSES = {
     id: "ranger",
     name: "Ranger",
     blurb: "Quiet. Watching.",
-    base: { health: 5, sleep: 5, fear: 6, mana: 0 },
-    maxes: { health: 5, sleep: 5, fear: 6, mana: 0 },
+    base: { health: 10, sleep: 10, fear: 12, mana: 0 },
+    maxes: { health: 10, sleep: 10, fear: 12, mana: 0 },
     traits: [
       "Lower fear from animals and the forest itself.",
       "May plant a trap on the next exploration card drawn by anyone (costs 1 sleep).",
-      "Aims true — ranged attacks have +1 chance to hit."
+      "Aims true — ranged attacks have +1 chance to hit.",
+      "Eyes through fog — sights other players one tile further than most."
     ],
     hooks: {
       animalFearReduction: 1,
-      rangedHitBonus: 0.15
+      rangedHitBonus: 0.15,
+      sightBonus: 1
     }
   },
 };
@@ -78,6 +79,11 @@ function makePlayer({ id, name, classId, isHuman = true }) {
     // position on the hex map; set during Game.start
     position: null,
     revealedTiles: new Set(),
+    knownPositions: {},   // { otherId: { tile, round } } — last sighted by THIS player
+    scanActiveThisRound: false,  // true the round you used Scan (reveals all)
+
+    // active condition timers
+    conditions: { poison: 0 },   // turns remaining of each effect
 
     // hidden secrets known only when this player is active
     secrets: [],     // free-form notes ("there is a snake at the next clearing", etc.)

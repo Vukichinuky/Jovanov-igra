@@ -68,9 +68,16 @@ const UI = (() => {
 
     $("#privacy-continue").addEventListener("click", () => {
       const p = Game.currentPlayer();
-      if (!p.alive) {
-        // shouldn't happen, but guard
+      if (!p || !p.alive) {
         showScreen("game");
+        return;
+      }
+      // Apply start-of-turn effects (poison) and refresh sight.
+      Game.beginActiveTurn();
+      // beginActiveTurn may have killed the player by poison; re-check.
+      const after = Game.currentPlayer();
+      if (!after || !after.alive) {
+        // game advanced; UI handles the next screen
         return;
       }
       renderGame();
@@ -102,13 +109,103 @@ const UI = (() => {
     const s = Game.state;
     const p = Game.currentPlayer();
     $("#round-num").textContent = s.round;
-    $("#round-total").textContent = 10;
+    $("#round-total").textContent = 15;
     $("#phase-text").textContent = `Day. ${p.name}'s turn.`;
     renderActivePanel(p);
     renderOthers(p);
     renderActions(p);
     renderMap(p);
+    renderIdleStage(p);
     renderLog();
+  }
+
+  /* The status / hints panel that fills the card stage when no card is open. */
+  function renderIdleStage(p) {
+    const s = Game.state;
+    const stage = $("#card-stage");
+    // Don't overwrite an active card prompt
+    if (stage.dataset.activeCard === "1") return;
+    stage.innerHTML = "";
+    stage.dataset.activeCard = "0";
+
+    stage.appendChild(el("div", "card-kind", `Tile #${p.position}`));
+    const here = s.map ? s.map.tiles[p.position] : null;
+    const title = here && here.consumed
+      ? `You stand at (${Grid.colOf(p.position)},${Grid.rowOf(p.position)}). Known ground.`
+      : `You stand at (${Grid.colOf(p.position)},${Grid.rowOf(p.position)}).`;
+    stage.appendChild(el("h2", "card-title", title));
+
+    // Conditions
+    const condParts = [];
+    if (p.conditions && p.conditions.poison > 0) {
+      condParts.push(`Poisoned — losing 1 health for ${p.conditions.poison} more turn${p.conditions.poison > 1 ? "s" : ""}.`);
+    }
+    if (p.scanActiveThisRound) condParts.push("Your senses are sharp. The wood is thinner.");
+    if (p.fear <= 2)  condParts.push("Your hands shake. One more shock could break you.");
+    if (p.sleep <= 2) condParts.push("You can barely keep your eyes open.");
+    if (p.health <= 3) condParts.push("You are badly hurt.");
+    if (condParts.length === 0) condParts.push("You feel steady, for now.");
+    const cond = el("p", "card-body");
+    cond.textContent = condParts.join(" ");
+    stage.appendChild(cond);
+
+    // What's around — names of any neighbor tiles you've revealed
+    if (s.map) {
+      const ns = Grid.neighbors(p.position);
+      const known = ns.filter(n => p.revealedTiles && p.revealedTiles.has(n));
+      if (known.length > 0) {
+        const list = known.map(n => {
+          const t = s.map.tiles[n];
+          const labelMap = {
+            empty_clearing: "an empty clearing",
+            old_path:       "an old path",
+            still_water:    "a still pool",
+            artefact_fragment: t.consumed ? "where you took an artefact" : "an artefact fragment",
+            ruins_npc:      "a ruin (wanderer)",
+            chest:          t.consumed ? "an empty chest" : "a chest",
+            hidden_cache:   t.consumed ? "an empty cache" : "a cache",
+            wild_boar:      "boar tracks",
+            wolves:         "wolf signs",
+            snake:          "snake grass",
+            whisper:        "where the whispers came from",
+            shape_at_treeline: "the shape at the treeline",
+            lost_trail:     "the trail that loops",
+            ghost_sighting: "where you saw someone you knew",
+          };
+          return `#${n}: ${labelMap[t.cardId] || t.cardId}`;
+        });
+        const around = el("p", "card-body");
+        around.textContent = "Around you: " + list.join(" · ");
+        stage.appendChild(around);
+      }
+    }
+
+    // Sightings of others
+    const sightings = [];
+    for (const o of s.players) {
+      if (o.id === p.id || !o.alive) continue;
+      if (Game.canSee(p, o)) {
+        const d = Grid.distance(p.position, o.position);
+        sightings.push(`${o.name} is ${d === 0 ? "here with you" : `${d} tile${d > 1 ? "s" : ""} away`} (tile #${o.position})`);
+      } else if (p.knownPositions && p.knownPositions[o.id]) {
+        const k = p.knownPositions[o.id];
+        const ago = s.round - k.round;
+        sightings.push(`${o.name} was at tile #${k.tile} ${ago === 0 ? "earlier this round" : `${ago} round${ago>1?"s":""} ago`}`);
+      }
+    }
+    if (sightings.length > 0) {
+      const seenWrap = el("p", "card-body");
+      seenWrap.textContent = "You see: " + sightings.join(". ") + ".";
+      stage.appendChild(seenWrap);
+    }
+
+    // Secrets (your private notes)
+    if (p.secrets && p.secrets.length) {
+      const hint = el("p", "card-body");
+      hint.style.color = "var(--accent)";
+      hint.textContent = "What only you know: " + p.secrets.slice(-3).map(s => s.text).join(" · ");
+      stage.appendChild(hint);
+    }
   }
 
   /* ---------- Map ---------- */
@@ -155,12 +252,23 @@ const UI = (() => {
     svg.setAttribute("width", totalW);
     svg.setAttribute("height", totalH);
 
-    // Build a quick lookup for who-is-on-which tile (plain object to avoid
-    // shadowing the Map module name).
-    const occupants = Object.create(null);
+    // Where the active player thinks each *other* player is.
+    // Real-time sight (close enough now) vs remembered sight (from scan or
+    // past proximity in this round).
+    const visibleOthers = Object.create(null);     // tileId -> [{player, freshness}]
     for (const pl of s.players) {
-      if (!pl.alive || pl.position == null) continue;
-      (occupants[pl.position] = occupants[pl.position] || []).push(pl);
+      if (pl.id === p.id) continue;
+      if (!pl.alive) continue;
+      let tileId = null, freshness = null;
+      if (Game.canSee(p, pl)) {
+        tileId = pl.position;
+        freshness = "fresh";
+      } else if (p.knownPositions && p.knownPositions[pl.id]) {
+        tileId = p.knownPositions[pl.id].tile;
+        freshness = "memory";
+      }
+      if (tileId == null) continue;
+      (visibleOthers[tileId] = visibleOthers[tileId] || []).push({ player: pl, freshness });
     }
 
     const tiles = s.map.tiles;
@@ -171,12 +279,12 @@ const UI = (() => {
 
       const knownByMe = p.revealedTiles && p.revealedTiles.has(t.id);
       const isMe      = t.id === p.position;
-      const here      = occupants[t.id];
-      const occByOther = here && here.some(o => o.id !== p.id);
+      const here      = visibleOthers[t.id];
+      const occByOther = !!here;
       const reachable = activeReachableSet && activeReachableSet.has(t.id);
 
       let cls = "tile";
-      if (!knownByMe && !occByOther && !reachable) {
+      if (!knownByMe && !occByOther && !reachable && !isMe) {
         cls += " fog";
       } else if (LANDMARK_CARDS.has(t.cardId) && t.consumed && knownByMe) {
         cls += " landmark";
@@ -193,7 +301,6 @@ const UI = (() => {
       if (reachable && activeReachableHandler) {
         poly.addEventListener("click", () => {
           const handler = activeReachableHandler;
-          // clear before firing in case the action immediately re-renders
           activeReachableSet = null;
           activeReachableHandler = null;
           handler(t.id);
@@ -202,15 +309,25 @@ const UI = (() => {
 
       svg.appendChild(poly);
 
-      // Tokens for players on this tile
+      // Self token
+      if (isMe) {
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("x", x);
+        text.setAttribute("y", y + 3);
+        text.setAttribute("text-anchor", "middle");
+        text.textContent = "★";
+        text.setAttribute("class", "token you");
+        svg.appendChild(text);
+      }
+      // Other players (only the ones we sense or remember)
       if (here && here.length) {
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", x);
         text.setAttribute("y", y + 3);
         text.setAttribute("text-anchor", "middle");
-        const initials = here.map(pl => pl.id === p.id ? "★" : pl.name[0].toUpperCase()).join("");
-        text.textContent = initials;
-        text.setAttribute("class", "token " + (here.some(pl => pl.id === p.id) ? "you" : "other"));
+        text.textContent = here.map(h => h.player.name[0].toUpperCase()).join("");
+        const isMemory = here.every(h => h.freshness === "memory");
+        text.setAttribute("class", "token other" + (isMemory ? " memory" : ""));
         svg.appendChild(text);
       }
     }
@@ -235,6 +352,7 @@ const UI = (() => {
   function showMoveChoice(p, neighborIds, onPick) {
     const stage = $("#card-stage");
     stage.innerHTML = "";
+    stage.dataset.activeCard = "1";
     stage.appendChild(el("div", "card-kind", "Movement"));
     stage.appendChild(el("h2", "card-title", "Where do you step?"));
     stage.appendChild(el("p", "card-body",
@@ -258,8 +376,9 @@ const UI = (() => {
     const cancel = el("button", "btn", "Don't move.");
     cancel.addEventListener("click", () => {
       clearReachable();
-      stage.innerHTML = "";
+      clearStage();
       renderActions(p);
+      renderIdleStage(p);
     });
     optsWrap.appendChild(cancel);
     stage.appendChild(optsWrap);
@@ -333,19 +452,34 @@ const UI = (() => {
       const name = el("span", "name", o.name);
       if (!o.alive) name.classList.add("dead");
       row.appendChild(name);
-      if (o.alive) {
-        // Show coarse signals — not exact numbers
-        const hp = healthSignal(o);
-        const fr = fearSignal(o);
-        const sl = sleepSignal(o);
-        row.appendChild(el("span", "pip", hp));
-        row.appendChild(el("span", "pip", fr));
-        row.appendChild(el("span", "pip", sl));
-      } else {
+
+      if (!o.alive) {
         row.appendChild(el("span", "pip", "ghost"));
         row.appendChild(el("span", "pip", ""));
         row.appendChild(el("span", "pip", ""));
+        wrap.appendChild(row);
+        continue;
       }
+
+      const seen = Game.canSee ? Game.canSee(active, o) : true;
+      const remembered = !seen && active.knownPositions && active.knownPositions[o.id];
+
+      if (seen) {
+        row.appendChild(el("span", "pip", healthSignal(o)));
+        row.appendChild(el("span", "pip", fearSignal(o)));
+        row.appendChild(el("span", "pip", sleepSignal(o)));
+      } else if (remembered) {
+        const lastSeen = active.knownPositions[o.id];
+        const ago = s.round - lastSeen.round;
+        row.appendChild(el("span", "pip", `last seen #${lastSeen.tile}`));
+        row.appendChild(el("span", "pip", ago === 0 ? "this round" : `${ago}r ago`));
+        row.appendChild(el("span", "pip", ""));
+      } else {
+        row.appendChild(el("span", "pip", "out of sight"));
+        row.appendChild(el("span", "pip", ""));
+        row.appendChild(el("span", "pip", ""));
+      }
+
       wrap.appendChild(row);
     }
   }
@@ -390,7 +524,9 @@ const UI = (() => {
 
   /* ============ Card stage / options ============ */
   function clearStage() {
-    $("#card-stage").innerHTML = "";
+    const stage = $("#card-stage");
+    stage.innerHTML = "";
+    stage.dataset.activeCard = "0";
   }
   function clearCardOptions() {
     const opts = $("#card-stage").querySelector(".card-options");
@@ -400,6 +536,7 @@ const UI = (() => {
   function showCard(card, result, afterRender) {
     const stage = $("#card-stage");
     stage.innerHTML = "";
+    stage.dataset.activeCard = "1";
     stage.appendChild(el("div", "card-kind", card.kind || ""));
     stage.appendChild(el("h2", "card-title", card.title));
     if (card.body) stage.appendChild(el("p", "card-body", card.body));
@@ -434,6 +571,7 @@ const UI = (() => {
   function showAttackMenu(attacker, targets, onChoose) {
     const stage = $("#card-stage");
     stage.innerHTML = "";
+    stage.dataset.activeCard = "1";
     stage.appendChild(el("div", "card-kind", "Violence"));
     stage.appendChild(el("h2", "card-title", "Who do you turn on?"));
     stage.appendChild(el("p", "card-body", "Every attack costs you sleep and nerve. The others will see the weapon."));
@@ -462,7 +600,7 @@ const UI = (() => {
       for (const a of choices) {
         const b = el("button", "btn", a.label);
         b.addEventListener("click", () => {
-          onChoose(t, a.weapon);
+          onChoose(t, a);
           clearStage();
           renderGame();
         });
@@ -479,6 +617,7 @@ const UI = (() => {
   function chooseTarget(prompt, targets, onChoose) {
     const stage = $("#card-stage");
     stage.innerHTML = "";
+    stage.dataset.activeCard = "1";
     stage.appendChild(el("h2", "card-title", prompt));
     const optsWrap = el("div", "card-options");
     for (const t of targets) {

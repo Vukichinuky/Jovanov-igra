@@ -25,16 +25,15 @@ const CARDS = [
     body: "It does not ripple when you breathe. You drink anyway.",
     weight: 2,
     resolve(state, p) {
-      const slept = adjustStat(p, "sleep", +1);
-      const fearBack = adjustStat(p, "fear", +1);
+      const slept = adjustStat(p, "sleep", +2);
+      const fearBack = adjustStat(p, "fear", +2);
+      const healed = adjustStat(p, "health", +1);
       const parts = [];
-      if (slept > 0)   parts.push(`Sleep +${slept}`);
+      if (slept > 0)    parts.push(`Sleep +${slept}`);
       if (fearBack > 0) parts.push(`Fear +${fearBack}`);
+      if (healed > 0)   parts.push(`Health +${healed}`);
       const tail = parts.length ? `. ${parts.join(", ")}` : ". The water was already in you.";
-      return { log: [{
-        text: `${p.name} drinks${tail}.`,
-        tone: "good"
-      }] };
+      return { log: [{ text: `${p.name} drinks${tail}.`, tone: "good" }] };
     }
   },
   {
@@ -58,8 +57,8 @@ const CARDS = [
     weight: 2,
     resolve(state, p) {
       const fearCut = (CLASSES[p.classId].hooks.animalFearReduction || 0);
-      const hit = applyInjury(p, 2);
-      const fearLoss = Math.max(0, 1 - fearCut);
+      const hit = applyInjury(p, 3);
+      const fearLoss = Math.max(0, 2 - fearCut);
       adjustStat(p, "fear", -fearLoss);
       const tail = fearLoss > 0 ? `, ${fearLoss} fear` : "";
       return { log: [
@@ -71,33 +70,37 @@ const CARDS = [
     id: "snake",
     kind: "Threat",
     title: "A snake in the grass",
-    body: "You see it after it sees you.",
+    body: "You see it after it sees you. Something burns in the wound.",
     weight: 2,
     resolve(state, p) {
-      const hit = applyInjury(p, 1);
-      // hidden poison: 50% chance to also lose 1 sleep next turn
-      if (RNG.chance(0.5)) {
-        p.secrets.push({ tag: "poisoned", text: "Something burns in the wound. (-1 sleep next turn)" });
-      }
-      return { log: [
+      const hit = applyInjury(p, 2);
+      // Poison: damage over time. 80% chance, 4 turns at 1/turn.
+      const poisoned = RNG.chance(0.8);
+      const lines = [
         { text: `It strikes. ${p.name} loses ${hit} health.`, tone: "bad" }
-      ] };
+      ];
+      if (poisoned) {
+        p.conditions.poison = Math.max(p.conditions.poison || 0, 4);
+        lines.push({ text: `The wound darkens. Poisoned (-1 health for 4 turns).`, tone: "bad" });
+      }
+      return { log: lines };
     }
   },
   {
     id: "wolves",
     kind: "Threat",
     title: "Wolves in the dark",
-    body: "Not one. Several. They do not approach.",
+    body: "Not one. Several. They do not approach yet.",
     weight: 1,
     resolve(state, p) {
       const fearCut = (CLASSES[p.classId].hooks.animalFearReduction || 0);
-      const fearLoss = Math.max(0, 2 - fearCut);
+      const hit = applyInjury(p, 1);
+      const fearLoss = Math.max(0, 3 - fearCut);
       adjustStat(p, "fear", -fearLoss);
-      adjustStat(p, "sleep", -1);
+      adjustStat(p, "sleep", -2);
       const tail = fearLoss > 0 ? `Fear -${fearLoss}, ` : "";
       return { log: [
-        { text: `${p.name} backs away slowly. ${tail}Sleep -1.`, tone: "bad" }
+        { text: `One bites. ${p.name} loses ${hit} health. ${tail}Sleep -2.`, tone: "bad" }
       ] };
     }
   },
@@ -111,9 +114,10 @@ const CARDS = [
     weight: 2,
     resolve(state, p) {
       const extra = (CLASSES[p.classId].hooks.extraFearOnEerie || 0);
-      const cut = adjustStat(p, "fear", -(1 + extra));
+      const amt = 2 + extra;
+      adjustStat(p, "fear", -amt);
       return { log: [
-        { text: `${p.name} hears the whisper. Fear ${cut}.`, tone: "bad" }
+        { text: `${p.name} hears the whisper. Fear -${amt}.`, tone: "bad" }
       ] };
     }
   },
@@ -125,10 +129,11 @@ const CARDS = [
     weight: 2,
     resolve(state, p) {
       const extra = (CLASSES[p.classId].hooks.extraFearOnEerie || 0);
-      adjustStat(p, "fear", -(1 + extra));
-      adjustStat(p, "sleep", -1);
+      const fearLoss = 2 + extra;
+      adjustStat(p, "fear", -fearLoss);
+      adjustStat(p, "sleep", -2);
       return { log: [
-        { text: `${p.name} watches the treeline too long. Fear -${1 + extra}, Sleep -1.`, tone: "bad" }
+        { text: `${p.name} watches the treeline too long. Fear -${fearLoss}, Sleep -2.`, tone: "bad" }
       ] };
     }
   },
@@ -139,9 +144,10 @@ const CARDS = [
     body: "You walk for an hour and arrive where you started. You did not turn.",
     weight: 1,
     resolve(state, p) {
-      adjustStat(p, "sleep", -2);
+      adjustStat(p, "sleep", -3);
+      adjustStat(p, "fear", -1);
       return { log: [
-        { text: `${p.name} loses an hour. Sleep -2.`, tone: "bad" }
+        { text: `${p.name} loses hours. Sleep -3, Fear -1.`, tone: "bad" }
       ] };
     }
   },
@@ -281,54 +287,60 @@ function applyInjury(p, raw) {
 }
 
 function openChest(state, p) {
-  // Pay cost
   adjustStat(p, "sleep", -1);
 
-  // Roll for outcome
   const bonus = CLASSES[p.classId].hooks.chestBadRollBonus || 0;
-  const roll = RNG.int(10) + bonus;
+  const roll = RNG.int(12) + bonus;
 
   if (roll <= 1) {
-    // Snake. Bad.
-    const hit = applyInjury(p, 2);
-    return { log: [{ text: `A snake. ${p.name} loses ${hit} health.`, tone: "bad" }] };
+    // Snake in the box. Bad and poisons.
+    const hit = applyInjury(p, 3);
+    p.conditions.poison = Math.max(p.conditions.poison || 0, 3);
+    return { log: [{ text: `A snake. ${p.name} loses ${hit} health and is poisoned (3 turns).`, tone: "bad" }] };
   }
   if (roll <= 3) {
-    // Curse: lose 2 fear, sleep
-    adjustStat(p, "fear", -2);
-    return { log: [{ text: `Bones and a coin that bites. Fear -2.`, tone: "bad" }] };
+    adjustStat(p, "fear", -3);
+    return { log: [{ text: `Bones and a coin that bites. Fear -3.`, tone: "bad" }] };
   }
-  if (roll <= 6) {
-    // Ammo
+  if (roll <= 5) {
+    // Antidote — clears poison, or stocks for later
+    if (p.conditions.poison > 0) {
+      p.conditions.poison = 0;
+      p.secrets.push({ tag: "antidote_used", text: "You drank the antidote. The burning stopped." });
+      return { log: [{ text: `${p.name} finds an antidote. The poison fades.`, tone: "good" }] };
+    }
+    p.ammo.antidote = (p.ammo.antidote || 0) + 1;
+    p.secrets.push({ tag: "antidote_stocked", text: "You pocketed an antidote vial." });
+    return { log: [{ text: `${p.name} pockets a small vial. They keep it to themselves.`, tone: "good" }] };
+  }
+  if (roll <= 7) {
     const which = RNG.chance(0.5) ? "bolts" : "bullets";
-    const n = RNG.range(1, 2);
+    const n = RNG.range(2, 3);
     p.ammo[which] += n;
     p.secrets.push({ tag: "chest_ammo", text: `You pocketed ${n} ${which}.` });
     return { log: [{ text: `${p.name} pries it open. They keep what they found to themselves.`, tone: "good" }] };
   }
-  if (roll <= 8) {
-    // Tier 1 melee weapon
+  if (roll <= 9) {
     if (!p.weapons.find(w => w.id === "axe")) {
       p.weapons.push({ id: "axe", name: "Forester's Axe", tier: 1, range: "melee", ammo: null });
       return { log: [{ text: `${p.name} pulls out an axe. Old. Heavy. Real.`, tone: "good" }] };
     }
-    p.ammo.bolts += 2;
-    return { log: [{ text: `${p.name} pries it open. Bolts. Two of them.`, tone: "good" }] };
+    p.ammo.bolts += 3;
+    return { log: [{ text: `${p.name} pries it open. A handful of bolts.`, tone: "good" }] };
   }
-  // Tier 2 ranged
+  // High roll: ranged weapon
   if (RNG.chance(0.5) && !p.weapons.find(w => w.id === "crossbow")) {
     p.weapons.push({ id: "crossbow", name: "Crossbow", tier: 2, range: "ranged", ammo: "bolts" });
-    p.ammo.bolts += 1;
-    return { log: [{ text: `${p.name} pulls out a crossbow. One bolt with it.`, tone: "good" }] };
+    p.ammo.bolts += 2;
+    return { log: [{ text: `${p.name} pulls out a crossbow. Two bolts with it.`, tone: "good" }] };
   }
   if (!p.weapons.find(w => w.id === "pistol")) {
     p.weapons.push({ id: "pistol", name: "Old Pistol", tier: 2, range: "ranged", ammo: "bullets" });
-    p.ammo.bullets += 1;
-    return { log: [{ text: `${p.name} pulls out a pistol. One bullet with it.`, tone: "good" }] };
+    p.ammo.bullets += 2;
+    return { log: [{ text: `${p.name} pulls out a pistol. Two bullets with it.`, tone: "good" }] };
   }
-  // already had everything — just ammo
-  p.ammo.bolts += 1;
-  p.ammo.bullets += 1;
+  p.ammo.bolts += 2;
+  p.ammo.bullets += 2;
   return { log: [{ text: `${p.name} pries it open. A little ammunition.`, tone: "good" }] };
 }
 

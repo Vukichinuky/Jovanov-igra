@@ -266,10 +266,11 @@ select:focus, input:focus { outline: 1px solid var(--accent-2); }
 .tile.has-other { fill: #2a1f1f; stroke: var(--danger); stroke-width: 1; }
 
 /* tokens drawn over tiles */
-.token        { font-family: "Iowan Old Style", Georgia, serif; font-size: 9px; pointer-events: none; }
-.token.you    { fill: var(--accent); }
-.token.other  { fill: var(--danger); }
-.token.dead   { fill: var(--ghost); font-style: italic; }
+.token         { font-family: "Iowan Old Style", Georgia, serif; font-size: 9px; pointer-events: none; }
+.token.you     { fill: var(--accent); }
+.token.other   { fill: var(--danger); }
+.token.other.memory { fill: var(--ink-faint); font-style: italic; }
+.token.dead    { fill: var(--ghost); font-style: italic; }
 
 /* legend */
 #map-legend {

@@ -15,8 +15,9 @@
 */
 
 const Game = (() => {
-  const ROUND_TOTAL = 10;
+  const ROUND_TOTAL = 15;
   const ARTEFACTS_TO_WIN = 2;
+  const BASE_SIGHT = 2;  // distance you naturally sense other players
 
   const state = {
     phase: "setup",
@@ -71,12 +72,71 @@ const Game = (() => {
   // expose to other modules
   window._logLine = logLine;
 
+  /* How far this player can sense others naturally. */
+  function sightRange(p) {
+    const bonus = (CLASSES[p.classId].hooks.sightBonus || 0);
+    return BASE_SIGHT + bonus;
+  }
+
+  /* Does this player currently know where `other` is? */
+  function canSee(viewer, other) {
+    if (!other.alive) return true; // ghosts visible via dim corpses
+    if (viewer.scanActiveThisRound) return true;
+    if (!state.map) return true;
+    return Grid.distance(viewer.position, other.position) <= sightRange(viewer);
+  }
+
+  /* Update viewer's memory of who they can see right now. */
+  function updateSightFor(viewer) {
+    viewer.knownPositions = viewer.knownPositions || {};
+    for (const other of state.players) {
+      if (other.id === viewer.id) continue;
+      if (!other.alive) continue;
+      if (canSee(viewer, other)) {
+        viewer.knownPositions[other.id] = { tile: other.position, round: state.round };
+      }
+    }
+  }
+
+  /* Apply ongoing conditions at the start of a player's turn. */
+  function applyStartOfTurnEffects(p) {
+    if (!p.conditions) p.conditions = { poison: 0 };
+    if (p.conditions.poison > 0) {
+      const hit = -adjustStat(p, "health", -1);
+      p.conditions.poison -= 1;
+      const left = p.conditions.poison;
+      logLine(`The poison works on ${p.name}. -${hit} health.` + (left > 0 ? ` (${left} turn${left>1?"s":""} left)` : " (fades)"), "bad");
+    }
+  }
+
+  /* Called by UI when the active player's turn actually starts (after the
+     privacy screen). Applies pending effects and refreshes sight. */
+  function beginActiveTurn() {
+    const p = currentPlayer();
+    if (!p) return;
+
+    // Scan persists for one round. If they didn't scan again on this turn, it
+    // wears off at the next.
+    p.scanActiveThisRound = false;
+
+    applyStartOfTurnEffects(p);
+    // death by poison
+    if (p.alive && p.health <= 0) {
+      p.alive = false;
+      p.ghost = Ghosts.create(p, null);
+      logLine(`${p.name} dies of the wound.`, "ghost");
+      return advance();
+    }
+    updateSightFor(p);
+  }
+
   /* ------- Turn actions available to the active player ------- */
   function availableActions(p) {
     const actions = [
-      { id: "move",    label: "Move (-1 sleep per tile)",   enabled: p.sleep >= 1 },
-      { id: "rest",    label: "Rest (sleep +2)",            enabled: p.fear > 0 },
-      { id: "scan",    label: "Scan the others (-1 fear)",  enabled: p.fear >= 1 },
+      { id: "move",    label: "Move (-1 sleep per tile)",      enabled: p.sleep >= 1 },
+      { id: "rest",    label: "Rest (+2 sleep, +1 fear, +1 health)", enabled: p.fear > 0 || p.health < p.maxes.health },
+      { id: "scan",    label: "Scan the wood (-2 fear)",       enabled: p.fear >= 2 },
+      { id: "treat",   label: (p.conditions && p.conditions.poison > 0) ? "Treat wound (-2 sleep, clear poison)" : "Treat wound (-2 sleep, +3 health)", enabled: p.sleep >= 2 && (p.conditions.poison > 0 || p.health < p.maxes.health) },
     ];
 
     // Attack other players within range
@@ -107,6 +167,7 @@ const Game = (() => {
       case "move":        return actMoveChoose(p);
       case "rest":        return actRest(p);
       case "scan":        return actScan(p);
+      case "treat":       return actTreat(p);
       case "attack":      return actAttackChoose(p);
       case "wizard_read": return actWizardRead(p);
       case "ranger_trap": return actRangerTrap(p);
@@ -188,11 +249,16 @@ const Game = (() => {
   function actRest(p) {
     if (state.flags.disturbedRestFor === p.id) {
       state.flags.disturbedRestFor = null;
-      logLine(`${p.name} closes their eyes. Something is wrong with the quiet. No sleep returns.`, "ghost");
+      logLine(`${p.name} closes their eyes. Something is wrong with the quiet. No rest returns.`, "ghost");
     } else {
-      const gained = adjustStat(p, "sleep", +2);
-      logLine(`${p.name} rests. Sleep +${gained}.`, "good");
-      // small mana recovery for wizard
+      const s = adjustStat(p, "sleep", +2);
+      const f = adjustStat(p, "fear", +1);
+      const h = adjustStat(p, "health", +1);
+      const parts = [];
+      if (s > 0) parts.push(`Sleep +${s}`);
+      if (f > 0) parts.push(`Fear +${f}`);
+      if (h > 0) parts.push(`Health +${h}`);
+      logLine(`${p.name} rests. ${parts.join(", ") || "Nothing returns."}`, "good");
       if (p.classId === "wizard") {
         const m = adjustStat(p, "mana", +1);
         if (m > 0) logLine(`The wizard breathes; mana +${m}.`, "good");
@@ -201,16 +267,34 @@ const Game = (() => {
     finishTurn(p);
   }
 
+  function actTreat(p) {
+    adjustStat(p, "sleep", -2);
+    if (p.conditions && p.conditions.poison > 0) {
+      p.conditions.poison = 0;
+      logLine(`${p.name} cleans the wound. The poison stops.`, "good");
+    } else {
+      const h = adjustStat(p, "health", +3);
+      logLine(`${p.name} treats their wounds. Health +${h}.`, "good");
+    }
+    finishTurn(p);
+  }
+
   function actScan(p) {
-    adjustStat(p, "fear", -1);
-    const others = state.players.filter(o => o.alive && o.id !== p.id);
-    // What the scanner sees: weapon names, but not ammo counts.
-    const sightings = others.map(o => {
+    adjustStat(p, "fear", -2);
+    p.scanActiveThisRound = true;
+    // Write every living player's current tile into our memory.
+    p.knownPositions = p.knownPositions || {};
+    const sightings = [];
+    for (const o of state.players) {
+      if (!o.alive || o.id === p.id) continue;
+      p.knownPositions[o.id] = { tile: o.position, round: state.round };
+      const d = Grid.distance(p.position, o.position);
       const weaponNames = o.weapons.map(w => w.name).join(", ");
-      return `${o.name} carries: ${weaponNames}`;
-    });
+      sightings.push(`${o.name}: tile #${o.position} (${Grid.colOf(o.position)},${Grid.rowOf(o.position)}) — ${d} away. Carries: ${weaponNames}.`);
+    }
+    if (sightings.length === 0) sightings.push("The wood is empty of the living.");
     UI.showCard(
-      { title: "You watch the others", kind: "Scan", body: "You can see what they hold. Not whether it bites." },
+      { title: "You sharpen your senses", kind: "Scan", body: "For a moment the fog thins. You see them through the trees." },
       { log: sightings.map(s => ({ text: s, tone: "dim" })) },
       () => {
         for (const s of sightings) logLine(s, "dim");
@@ -221,8 +305,8 @@ const Game = (() => {
 
   function actAttackChoose(p) {
     const targets = Combat.validTargets(state, p);
-    UI.showAttackMenu(p, targets, (target, weapon) => {
-      const res = Combat.resolve(state, p, target, weapon);
+    UI.showAttackMenu(p, targets, (target, option) => {
+      const res = Combat.resolve(state, p, target, option);
       for (const l of res.log) logLine(l.text, l.tone);
       finishTurn(p);
     });
@@ -375,6 +459,9 @@ const Game = (() => {
     resolveCardOption,
     resolveGhostAction,
     logLine,
+    beginActiveTurn,
+    canSee,
+    sightRange,
   };
 })();
 
